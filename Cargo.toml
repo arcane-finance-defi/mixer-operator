@@ -1,0 +1,19 @@
+[package]
+name = "mixer-operator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dotenv = "0.15.0"
+miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0" }
+miden-client = { version = "0.8.1", features = ["tonic", "sqlite"] }
+miden-objects = "0.8.1"
+rocket = { version = "0.5.1", features = ["json"] }
+thiserror = "2.0.12"
+tokio = "1.44.2"
+url = "2.5.4"
+serde = { version = "1.0.219", features = ["derive"] }
+miden-lib = "0.8.0"
+miden-tx = "0.8.1"
+deadpool-sqlite = { version = "0.9", features = ["rt_tokio_1"] }
+rusqlite = { version = "0.32", features = ["vtab", "array", "bundled"] }
