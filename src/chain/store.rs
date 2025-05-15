@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use deadpool_sqlite::{Config, Hook, HookError, Pool, Runtime};
+use deadpool_sqlite::{Config, Hook, HookError, Pool, PoolError, Runtime};
 use miden_client::utils::DeserializationError;
 use miden_objects::{AccountError, AccountIdError, AssetVaultError};
 use miden_objects::account::AccountId;
@@ -12,7 +12,7 @@ pub struct BlockStore {
     pub(crate) pool: Pool,
 }
 
-#[derive(Error)]
+#[derive(Error, Debug)]
 pub enum StoreError {
     #[error("Database error: {0}")]
     DatabaseError(String),
@@ -34,6 +34,8 @@ pub enum StoreError {
     AccountDataNotFound(AccountId),
     #[error("asset vault error")]
     AssetVaultError(#[from] AssetVaultError),
+    #[error(transparent)]
+    PoolError(#[from] PoolError),
 }
 
 impl BlockStore {

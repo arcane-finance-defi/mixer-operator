@@ -30,7 +30,9 @@ impl RpcRequest<Box<dyn Any + Send + Sync>> for BlockHeaderCommand {
         let (header, _) = rpc.get_block_header_by_number(Some(self.block_height.into()),false).await
             .map_err(RpcRequestExecutionError::from)?;
 
-        let mmr = rpc.sync_state()
+        let mmr = rpc.sync_state(
+            self.block_height.into(), &[], &[]
+        ).await?;
 
         Ok(Box::new(result.chain_tip))
     }

@@ -1,8 +1,10 @@
 use miden_client::crypto::InOrderIndex;
 use miden_objects::block::BlockNumber;
 use miden_objects::transaction::TransactionId;
+use crate::chain::store::{BlockStore, StoreError};
+use crate::sync::StateSyncUpdate;
 
-mod store;
+pub mod store;
 mod sync;
 mod chain_data;
 mod errors;
@@ -35,4 +37,18 @@ pub enum TransactionFilter {
     /// A transaction is considered expired if is uncommitted and the transaction's block number
     /// is less than the provided block number.
     ExpiredBefore(BlockNumber),
+}
+
+impl BlockStore {
+    async fn get_sync_height(&self) -> Result<BlockNumber, StoreError> {
+        self.pool.get().await?
+            .interact(|c| self.get_sync_height_internal(c))
+            .await
+    }
+
+    async fn apply_state_sync(&self, update: StateSyncUpdate) -> Result<(), StoreError> {
+        self.pool.get().await?
+            .interact(move |c| self.apply_state_sync_internal(c, update))
+            .await
+    }
 }

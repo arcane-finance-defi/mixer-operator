@@ -14,9 +14,6 @@ extern crate rocket;
 #[macro_use]
 extern crate alloc;
 extern crate core;
-extern crate core;
-extern crate core;
-extern crate core;
 
 mod rpc;
 mod config;

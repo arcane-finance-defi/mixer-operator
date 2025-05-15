@@ -65,17 +65,8 @@ use miden_objects::{
     transaction::TransactionId,
 };
 use miden_tx::utils::{Deserializable, DeserializationError, Serializable};
-use tracing::info;
-
-use crate::{
-    Client, ClientError,
-    note::NoteUpdates,
-    rpc::domain::{
-        note::CommittedNote, nullifier::NullifierUpdate, transaction::TransactionUpdate,
-    },
-    store::{AccountUpdates, InputNoteRecord, NoteFilter, OutputNoteRecord, TransactionFilter},
-    transaction::{TransactionRecord, TransactionStatus, TransactionUpdates},
-};
+use thiserror::Error;
+use tokio::sync::RwLock;
 
 mod block_header;
 pub(crate) use block_header::MAX_BLOCK_NUMBER_DELTA;
@@ -88,20 +79,16 @@ pub use tag::{NoteTagRecord, NoteTagSource};
 pub const TX_GRACEFUL_BLOCKS: u32 = 20;
 mod state_sync_update;
 pub use state_sync_update::StateSyncUpdate;
+use crate::chain::store::{BlockStore, StoreError};
+use crate::rpc::client::RpcClient;
 
 /// Contains stats about the sync operation.
 #[derive(Debug, PartialEq)]
 pub struct SyncSummary {
     /// Block number up to which the client has been synced.
     pub block_num: BlockNumber,
-    /// IDs of tracked notes that received inclusion proofs.
-    pub committed_notes: Vec<NoteId>,
-    /// IDs of notes that have been consumed.
-    pub consumed_notes: Vec<NoteId>,
     /// IDs of on-chain accounts that have been updated.
     pub updated_accounts: Vec<AccountId>,
-    /// IDs of private accounts that have been locked.
-    pub locked_accounts: Vec<AccountId>,
     /// IDs of committed transactions.
     pub committed_transactions: Vec<TransactionId>,
 }
@@ -109,18 +96,12 @@ pub struct SyncSummary {
 impl SyncSummary {
     pub fn new(
         block_num: BlockNumber,
-        committed_notes: Vec<NoteId>,
-        consumed_notes: Vec<NoteId>,
         updated_accounts: Vec<AccountId>,
-        locked_accounts: Vec<AccountId>,
         committed_transactions: Vec<TransactionId>,
     ) -> Self {
         Self {
             block_num,
-            committed_notes,
-            consumed_notes,
             updated_accounts,
-            locked_accounts,
             committed_transactions,
         }
     }
@@ -128,28 +109,19 @@ impl SyncSummary {
     pub fn new_empty(block_num: BlockNumber) -> Self {
         Self {
             block_num,
-            committed_notes: vec![],
-            consumed_notes: vec![],
             updated_accounts: vec![],
-            locked_accounts: vec![],
             committed_transactions: vec![],
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.committed_notes.is_empty()
-            && self.consumed_notes.is_empty()
-            && self.updated_accounts.is_empty()
-            && self.locked_accounts.is_empty()
+        self.updated_accounts.is_empty()
             && self.committed_transactions.is_empty()
     }
 
     pub fn combine_with(&mut self, mut other: Self) {
         self.block_num = max(self.block_num, other.block_num);
-        self.committed_notes.append(&mut other.committed_notes);
-        self.consumed_notes.append(&mut other.consumed_notes);
         self.updated_accounts.append(&mut other.updated_accounts);
-        self.locked_accounts.append(&mut other.locked_accounts);
         self.committed_transactions.append(&mut other.committed_transactions);
     }
 }
@@ -157,10 +129,7 @@ impl SyncSummary {
 impl Serializable for SyncSummary {
     fn write_into<W: miden_tx::utils::ByteWriter>(&self, target: &mut W) {
         self.block_num.write_into(target);
-        self.committed_notes.write_into(target);
-        self.consumed_notes.write_into(target);
         self.updated_accounts.write_into(target);
-        self.locked_accounts.write_into(target);
         self.committed_transactions.write_into(target);
     }
 }
@@ -170,18 +139,12 @@ impl Deserializable for SyncSummary {
         source: &mut R,
     ) -> Result<Self, DeserializationError> {
         let block_num = BlockNumber::read_from(source)?;
-        let committed_notes = Vec::<NoteId>::read_from(source)?;
-        let consumed_notes = Vec::<NoteId>::read_from(source)?;
         let updated_accounts = Vec::<AccountId>::read_from(source)?;
-        let locked_accounts = Vec::<AccountId>::read_from(source)?;
         let committed_transactions = Vec::<TransactionId>::read_from(source)?;
 
         Ok(Self {
             block_num,
-            committed_notes,
-            consumed_notes,
             updated_accounts,
-            locked_accounts,
             committed_transactions,
         })
     }
@@ -200,17 +163,26 @@ impl SyncStatus {
     }
 }
 
-// CONSTANTS
-// ================================================================================================
+struct SyncWorker {
+    store: RwLock<BlockStore>,
+    rpc: RpcClient
+}
+
+#[derive(Error, Debug)]
+pub enum SyncError {
+    #[error(transparent)]
+    StoreError(#[from] StoreError),
+}
 
 /// Client syncronization methods.
-impl Client {
+impl SyncWorker {
     // SYNC STATE
     // --------------------------------------------------------------------------------------------
 
     /// Returns the block number of the last state sync block.
-    pub async fn get_sync_height(&self) -> Result<BlockNumber, ClientError> {
-        self.store.get_sync_height().await.map_err(Into::into)
+    pub async fn get_sync_height(&self) -> Result<BlockNumber, SyncError> {
+        self.store.read().await?
+            .get_sync_height().await
     }
 
     /// Syncs the client's state with the current state of the Miden network. Returns the block
@@ -232,7 +204,7 @@ impl Client {
     ///    state.
     /// 7. The MMR is updated with the new peaks and authentication nodes.
     /// 8. All updates are applied to the store to be persisted.
-    pub async fn sync_state(&mut self) -> Result<SyncSummary, ClientError> {
+    pub async fn sync_state(&mut self) -> Result<SyncSummary, SyncError> {
         let starting_block_num = self.get_sync_height().await?;
 
         _ = self.ensure_genesis_in_place().await?;
@@ -264,8 +236,7 @@ impl Client {
             .map(|(acc_header, _)| acc_header)
             .collect();
 
-        let note_tags: Vec<NoteTag> =
-            self.store.get_unique_note_tags().await?.into_iter().collect();
+        let note_tags: Vec<NoteTag> = Vec::new();
 
         // Send request
         let account_ids: Vec<AccountId> = accounts.iter().map(AccountHeader::id).collect();
@@ -276,26 +247,13 @@ impl Client {
             return Ok(SyncStatus::SyncedToLastBlock(SyncSummary::new_empty(current_block_num)));
         }
 
-        let (note_updates, tags_to_remove) = self
-            .committed_note_updates(response.note_inclusions, &response.block_header)
-            .await?;
-
-        let incoming_block_has_relevant_notes = self.check_block_relevance(&note_updates).await?;
-
         let transactions_to_commit = self.get_transactions_to_commit(response.transactions).await?;
 
-        let (public_accounts, private_accounts): (Vec<_>, Vec<_>) =
+        let (public_accounts, _): (Vec<_>, Vec<_>) =
             accounts.into_iter().partition(|account_header| account_header.id().is_public());
 
         let updated_public_accounts = self
             .get_updated_public_accounts(&response.account_commitment_updates, &public_accounts)
-            .await?;
-
-        let mismatched_private_accounts = self
-            .validate_local_account_commitments(
-                &response.account_commitment_updates,
-                &private_accounts,
-            )
             .await?;
 
         // Build PartialMmr with current data and apply updates

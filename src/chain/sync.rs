@@ -8,7 +8,7 @@ use crate::sync::StateSyncUpdate;
 use super::store::{BlockStore, StoreError};
 
 impl BlockStore {
-    pub(super) fn get_sync_height(conn: &mut Connection) -> Result<BlockNumber, StoreError> {
+    pub(super) fn get_sync_height_internal(conn: &mut Connection) -> Result<BlockNumber, StoreError> {
         const QUERY: &str = "SELECT block_num FROM state_sync";
 
         conn.prepare(QUERY)?
@@ -23,7 +23,7 @@ impl BlockStore {
             .expect("state sync block number exists")
     }
 
-    pub(super) fn apply_state_sync(
+    pub(super) fn apply_state_sync_internal(
         conn: &mut Connection,
         state_sync_update: StateSyncUpdate,
     ) -> Result<(), StoreError> {
