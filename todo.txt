@@ -1,0 +1,5 @@
+Use Case: Generate transaction
+    To send any transaction, we need to sync our state with Miden network
+        Sync our state with Miden Network
+            Problem: Miden Client stores all state
+

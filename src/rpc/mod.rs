@@ -1,7 +1,7 @@
-mod worker;
-pub mod errors;
+pub mod commands;
 mod common;
-mod commands;
+pub mod errors;
+mod worker;
 
 pub use commands::*;
 pub use worker::RpcClientWorker;

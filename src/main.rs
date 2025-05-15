@@ -1,31 +1,27 @@
-use std::ops::Deref;
-use std::sync::Arc;
+use crate::config::Config;
 use dotenv::dotenv;
-use rocket::{get, routes};
+use rocket::State as RocketState;
 use rocket::http::Status;
 use rocket::serde::json::Json;
+use rocket::{get, routes};
 use serde::{Deserialize, Serialize};
-use crate::config::Config;
-use crate::rpc::client::RpcClient;
-use crate::rpc::RpcClientWorker;
-use rocket::State as RocketState;
+use std::ops::Deref;
+use std::sync::Arc;
 #[macro_use]
 extern crate rocket;
 #[macro_use]
 extern crate alloc;
 extern crate core;
-extern crate core;
-extern crate core;
-extern crate core;
 
-mod rpc;
 mod config;
-mod transaction;
-mod chain;
-mod sync;
+mod rpc;
+mod rpc2;
+pub use rpc::RpcClientWorker;
+pub use rpc::commands::client::RpcClient;
+pub use rpc2::ThreadPoolMidenRpcAsyncFacade;
 
 struct State {
-    rpc: Arc<RpcClient>
+    rpc: Arc<ThreadPoolMidenRpcAsyncFacade>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -36,13 +32,16 @@ pub struct ErrorResponse {
 
 #[get("/chain-tip")]
 async fn chain_tip(state: &RocketState<State>) -> Result<Json<u32>, Status> {
-    let chain_tip = state.rpc.get_chain_tip().await
-        .map_err(|e| Status::InternalServerError)?;
+    let chain_tip = state
+        .rpc
+        .get_chain_tip()
+        .await
+        .map_err(|_e| Status::InternalServerError)?;
 
     Ok(Json::from(chain_tip.deref().clone()))
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
@@ -51,22 +50,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let figment = rocket.figment();
     let config: Config = figment.extract().expect("config");
 
-    let (sender, receiver) = tokio::sync::mpsc::channel(10);
+    let endpoint = miden_client::rpc::Endpoint::new("http".to_string(), config.rpc_url(), None);
 
-    let mut rpc_worker = RpcClientWorker::new(
-        config.rpc_url(),
+    let client_count = config.client_count();
+
+    let miden_facade = Arc::new(ThreadPoolMidenRpcAsyncFacade::new(
+        client_count,
+        &endpoint,
         config.rpc_timeout_ms(),
-        receiver
-    )?;
-
-    let runtime = Arc::new(
-        tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap()
-    );
-
-    rpc_worker.start(runtime.clone());
+    ));
 
     let state = State {
-        rpc: Arc::new(RpcClient::new(sender))
+        rpc: miden_facade,
     };
 
     rocket

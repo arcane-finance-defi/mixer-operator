@@ -5,6 +5,7 @@ use rocket::serde::Deserialize;
 pub struct Config {
     rpc_url: String,
     rpc_timeout_ms: u64,
+    client_count: u32,
 }
 
 impl Config {
@@ -14,5 +15,9 @@ impl Config {
 
     pub fn rpc_timeout_ms(&self) -> u64 {
         self.rpc_timeout_ms
+    }
+
+    pub fn client_count(&self) -> u32 {
+        self.client_count
     }
 }
