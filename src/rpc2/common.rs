@@ -76,7 +76,7 @@ impl ThreadPoolMidenRpcAsyncFacade {
 async fn execute_request(rpc_client: &TonicRpcClient, request: MidenRequest) {
     match request {
         MidenRequest::GetBlockHeader {
-        3request,
+            request,
             on_response,
         } => {
             let result = rpc_client
