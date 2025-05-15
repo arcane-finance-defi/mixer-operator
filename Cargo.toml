@@ -17,3 +17,9 @@ miden-lib = "0.8.0"
 miden-tx = "0.8.1"
 deadpool-sqlite = { version = "0.9", features = ["rt_tokio_1"] }
 rusqlite = { version = "0.32", features = ["vtab", "array", "bundled"] }
+async-trait = "0.1"
+crossbeam-channel = "0.5"
+futures = "0.3"
+tracing = "0.1.41"
+log = "0.4"
+env_logger = "0.10"
