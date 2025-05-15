@@ -55,7 +55,7 @@ fn rocket() -> _ {
     let figment = rocket.figment();
     let config: Config = figment.extract().expect("config");
 
-    let endpoint = miden_client::rpc::Endpoint::new("http".to_string(), config.rpc_url(), None);
+    let endpoint = miden_client::rpc::Endpoint::try_from(config.rpc_url().as_str()).unwrap();
     let client_count = config.client_count();
 
     let miden_facade = Arc::new(ThreadPoolMidenRpcAsyncFacade::new(
