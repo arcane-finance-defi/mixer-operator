@@ -1,0 +1,211 @@
+use std::path::PathBuf;
+use miden_client::{Client, ClientError};
+use miden_client::store::sqlite_store::SqliteStore;
+use thiserror::Error;
+use std::sync::Arc;
+use glob::glob;
+use miden_bridge::accounts::token_wrapper::bridge_note_tag;
+use miden_client::rpc::{Endpoint, TonicRpcClient};
+use miden_client::store::Store;
+use miden_client::transaction::{TransactionRequestBuilder, TransactionRequestError};
+use miden_objects::account::{AccountFile, AccountId};
+use miden_objects::crypto::rand::RpoRandomCoin;
+use miden_objects::{AccountIdError, Felt, NoteError, Word, ZERO};
+use miden_objects::note::{Note, NoteAssets, NoteExecutionHint, NoteFile, NoteInputs, NoteMetadata, NoteRecipient, NoteType};
+use rand::{rng, Rng};
+use miden_bridge::notes::bridge::{croschain, bridge};
+use miden_objects::asset::Asset;
+use miden_objects::transaction::OutputNote;
+use miden_objects::utils::{Deserializable, DeserializationError};
+use tokio::fs::read;
+
+const DEFAULT_STORAGE_FILE: &str = "store.db";
+
+pub struct MixerClient {
+    client: Client
+}
+
+#[derive(Error, Debug)]
+pub enum MixerClientError {
+    #[error(transparent)]
+    InternalClientError(#[from] ClientError),
+    #[error("Endpoint string parse error: {0}")]
+    MalformedEndpointUrlError(String),
+    #[error("Invalid note type")]
+    InvalidNoteTypeError(),
+    #[error("Not manageable account {0}")]
+    NotManageableAccountError(String),
+    #[error(transparent)]
+    TransactionRequestError(#[from] TransactionRequestError),
+    #[error("Wrong input note script root")]
+    WrongNoteScriptRootError(),
+    #[error(transparent)]
+    EventNoteConstructorError(#[from] PublicNoteConstructorError),
+    #[error(transparent)]
+    InternalIoError(#[from] std::io::Error),
+    #[error(transparent)]
+    InternalDeserializationError(#[from] DeserializationError),
+    #[error(transparent)]
+    AccountIdParsingError(#[from] AccountIdError),
+}
+
+impl MixerClient {
+    pub async fn new(
+        rpc_endpoint: &str,
+        rpc_timeout_ms: u64,
+        store_filename: Option<PathBuf>
+    ) -> Result<Self, MixerClientError> {
+        let store = SqliteStore::new(
+            store_filename.or(Some(PathBuf::from(DEFAULT_STORAGE_FILE.to_string()))).unwrap()
+        ).await.map_err(ClientError::StoreError)?;
+
+        let store = Arc::new(store);
+
+        let mut rng = rng();
+        let coin_seed: [u64; 4] = rng.random();
+
+        let rng = RpoRandomCoin::new(coin_seed.map(Felt::new));
+
+        let client = Client::new(
+            Arc::new(TonicRpcClient::new(
+                &Endpoint::try_from(rpc_endpoint)
+                    .map_err(MixerClientError::MalformedEndpointUrlError)?,
+                rpc_timeout_ms
+            )),
+            Box::new(rng),
+            store.clone() as Arc<dyn Store>,
+            Arc::new(()),
+            false,
+        );
+
+        Ok(Self {
+            client
+        })
+    }
+
+    pub async fn initialize(
+        &mut self,
+        supported_accounts_dir: PathBuf,
+        public_accounts_to_import: Vec<String>,
+    ) -> Result<(), MixerClientError> {
+        let mut supported_accounts_dir = supported_accounts_dir.to_str().unwrap().to_string();
+        supported_accounts_dir.push_str("/*.mao");
+
+        for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
+            let account_bytes = read(path).await?;
+            let account_file = AccountFile::read_from_bytes(account_bytes.as_slice())?;
+            let account_id = account_file.account.id();
+
+            if self.client.try_get_account_header(account_id).await.is_err() {
+                self.client.add_account(&account_file.account, None, false).await?;
+            }
+        }
+
+        for public_account_id in public_accounts_to_import {
+            let public_account_id = AccountId::from_hex(public_account_id.as_str())?;
+
+            if self.client.try_get_account_header(public_account_id).await.is_err() {
+                self.client.import_account_by_id(public_account_id).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn cleanup(&self) -> Result<(), MixerClientError> {
+        // self.store.remove_notes().await?;
+
+        Ok(())
+    }
+
+    pub async fn mix(&mut self, note_file: NoteFile, account_id: AccountId) -> Result<String, MixerClientError> {
+        let note = match note_file {
+            NoteFile::NoteWithProof(ref note, _) => Ok(note),
+            _ => Err(MixerClientError::InvalidNoteTypeError())
+        }?;
+
+        if note.recipient().script().root() == croschain().root() {
+            Ok(())
+        } else {
+            Err(MixerClientError::WrongNoteScriptRootError())
+        }?;
+
+        let expected_bridge_note= get_public_bridge_output_note(note)?;
+
+        let note_id = self.client.import_note(note_file).await?;
+
+        let account = self.client.try_get_account(account_id.clone()).await;
+
+        if let Err(ClientError::AccountDataNotFound(_)) = account {
+            Err(MixerClientError::NotManageableAccountError(account_id.clone().to_hex()))
+        } else {
+            Ok(())
+        }?;
+
+        self.client.sync_state().await?;
+
+        let tx = self.client.new_transaction(
+            account_id,
+            TransactionRequestBuilder::consume_notes(vec![note_id])
+                .with_own_output_notes(vec![expected_bridge_note])
+                .build()?
+        ).await?;
+
+        let tx_id = tx.executed_transaction().id();
+
+        self.client.submit_transaction(tx).await?;
+        self.cleanup().await?;
+
+        Ok(tx_id.to_hex())
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum PublicNoteConstructorError {
+    #[error("Fungible asset in the crosschain note note found")]
+    FungibleAssetNotFound(),
+    #[error(transparent)]
+    NoteCreationError(#[from] NoteError),
+    #[error("Malformed serial number")]
+    MalformedSerialNumber(),
+}
+
+fn get_public_bridge_output_note(input_note: &Note) -> Result<OutputNote, PublicNoteConstructorError> {
+    let crosschain_asset = input_note.assets().iter().last()
+        .ok_or(PublicNoteConstructorError::FungibleAssetNotFound())?;
+    let crosschain_asset = match crosschain_asset {
+        Asset::Fungible(asset) => Ok(asset),
+        _ => Err(PublicNoteConstructorError::FungibleAssetNotFound())
+    }?;
+    let script = bridge();
+    let assets = NoteAssets::default();
+    let metadata = NoteMetadata::new(
+        crosschain_asset.faucet_id(),
+        NoteType::Public,
+        bridge_note_tag(),
+        NoteExecutionHint::Always,
+        ZERO
+    )?;
+
+    let serial_num = Word::try_from(input_note.inputs().values()[..4].to_vec())
+        .map_err(|_| PublicNoteConstructorError::MalformedSerialNumber())?;
+
+    let inputs = NoteInputs::new(
+        vec![
+            Word::from(Asset::Fungible(crosschain_asset.clone())).to_vec(),
+            input_note.inputs().values()[4..].to_vec()
+        ].concat()
+    )?;
+
+    let recipient = NoteRecipient::new(
+        serial_num,
+        script,
+        inputs
+    );
+
+    Ok(OutputNote::Full(Note::new(
+        assets,
+        metadata,
+        recipient
+    )))
+}

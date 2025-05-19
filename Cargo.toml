@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 dotenv = "0.15.0"
-miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0" }
+miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0", features = ["std", "async"] }
 miden-client = { version = "0.8.1", features = ["tonic", "sqlite"] }
 miden-objects = "0.8.1"
 rocket = { version = "0.5.1", features = ["json"] }
@@ -23,3 +23,6 @@ futures = "0.3"
 tracing = "0.1.41"
 log = "0.4"
 env_logger = "0.10"
+rand = "0.9.1"
+hex = "0.4.3"
+glob = "0.3.2"
