@@ -1,7 +1,9 @@
+use std::any::Any;
+use std::error::Error;
 use dotenv::dotenv;
 use miden_objects::account::AccountId;
 use miden_objects::note::NoteFile;
-use miden_objects::utils::Deserializable;
+use miden_objects::utils::{Deserializable, DeserializationError};
 use rocket::{get, routes};
 use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -11,7 +13,9 @@ use rocket::State as RocketState;
 use crate::mixer::client::MixerClientError;
 use tokio::sync::{oneshot, mpsc};
 use crate::mixer::{event_loop, MixClientRequest};
-use hex::decode;
+use hex::{decode, FromHexError};
+use miden_objects::AccountIdError;
+use thiserror::Error;
 
 #[macro_use]
 extern crate rocket;
@@ -23,10 +27,35 @@ mod config;
 mod rpc;
 mod mixer;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Error, Debug)]
+pub enum EndpointError {
+    #[error(transparent)]
+    HexError(#[from] FromHexError),
+    #[error(transparent)]
+    DeserializationError(#[from] DeserializationError),
+    #[error(transparent)]
+    AccountIdError(#[from] AccountIdError),
+    #[error(transparent)]
+    SendError(#[from] mpsc::error::SendError<MixClientRequest>),
+    #[error(transparent)]
+    RecvError(#[from] oneshot::error::RecvError),
+    #[error(transparent)]
+    MixerClientError(#[from] MixerClientError),
+}
+
+#[derive(Debug, Deserialize, Serialize, Responder)]
 #[serde(crate = "rocket::serde")]
+#[response(status = 500, content_type = "json")]
 pub struct ErrorResponse {
     error: String,
+}
+
+impl From<EndpointError> for ErrorResponse {
+    fn from(value: EndpointError) -> Self {
+        Self {
+            error: value.to_string(),
+        }
+    }
 }
 
 #[get("/chain-tip")]
@@ -48,13 +77,13 @@ pub struct MixResponse {
 }
 
 #[post("/mix", data = "<data>")]
-async fn mix(data: Json<MixRequest>, state: &RocketState<MixerState>) -> Result<Json<MixResponse>, Status> {
-    let note_bytes = decode(&data.note_text)
-        .map_err(|_| Status::InternalServerError)?;
+async fn mix(data: Json<MixRequest>, state: &RocketState<MixerState>) -> Result<Json<MixResponse>, ErrorResponse> {
+    let note_bytes = decode(&data.note_text).map_err(EndpointError::from)?;
 
     let note_file = NoteFile::read_from_bytes(note_bytes.as_slice())
-        .map_err(|_| Status::InternalServerError)?;
-    let account_id = AccountId::from_hex(&data.account_id).unwrap();
+        .map_err(EndpointError::from)?;
+    let account_id = AccountId::from_hex(&data.account_id)
+        .map_err(EndpointError::from)?;
 
     let (request, response) = oneshot::channel::<Result<String, MixerClientError>>();
 
@@ -62,12 +91,11 @@ async fn mix(data: Json<MixRequest>, state: &RocketState<MixerState>) -> Result<
         note_file,
         account_id,
         response_sink: request
-    }).await
-        .map_err(|_| Status::InternalServerError)?;
+    }).await.map_err(EndpointError::from)?;
 
     let response = response.await
-        .map_err(|_| Status::InternalServerError)?
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(EndpointError::from)?
+        .map_err(EndpointError::from)?;
 
     Ok(Json(MixResponse {
         tx_id: response

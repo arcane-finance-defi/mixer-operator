@@ -1541,8 +1541,7 @@ dependencies = [
 [[package]]
 name = "miden-client"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c5d095c961b0a18aa1f59f719a7425994821492782ef3b323589fea0d65acba"
+source = "git+https://github.com/slon2015/miden-client?branch=feat%2Fempty-script#62173234ee590f1f88036fda2ded89c80efcd707"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1849,6 +1848,7 @@ dependencies = [
 name = "mixer-operator"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "crossbeam-channel",
  "deadpool-sqlite",

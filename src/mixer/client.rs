@@ -89,24 +89,35 @@ impl MixerClient {
         public_accounts_to_import: Vec<String>,
     ) -> Result<(), MixerClientError> {
         let mut supported_accounts_dir = supported_accounts_dir.to_str().unwrap().to_string();
-        supported_accounts_dir.push_str("/*.mao");
+        supported_accounts_dir.push_str("/*.mac");
+
+        info!("Mixer operator initialization start");
+
+        self.client.sync_state().await?;
+
+        info!("Mixer state synced");
 
         for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
             let account_bytes = read(path).await?;
             let account_file = AccountFile::read_from_bytes(account_bytes.as_slice())?;
             let account_id = account_file.account.id();
+            let account_id_hex = account_id.to_hex();
+            info!("Importing the private account with id {account_id_hex}");
 
             if self.client.try_get_account_header(account_id).await.is_err() {
                 self.client.add_account(&account_file.account, None, false).await?;
             }
+            info!("Private account imported")
         }
 
         for public_account_id in public_accounts_to_import {
+            info!("Importing the public account with id {public_account_id}");
             let public_account_id = AccountId::from_hex(public_account_id.as_str())?;
 
             if self.client.try_get_account_header(public_account_id).await.is_err() {
                 self.client.import_account_by_id(public_account_id).await?;
             }
+            info!("Public account imported")
         }
 
         Ok(())
@@ -132,6 +143,8 @@ impl MixerClient {
 
         let expected_bridge_note= get_public_bridge_output_note(note)?;
 
+        self.client.sync_state().await?;
+
         let note_id = self.client.import_note(note_file).await?;
 
         let account = self.client.try_get_account(account_id.clone()).await;
@@ -148,6 +161,7 @@ impl MixerClient {
             account_id,
             TransactionRequestBuilder::consume_notes(vec![note_id])
                 .with_own_output_notes(vec![expected_bridge_note])
+                .with_empty_script()
                 .build()?
         ).await?;
 

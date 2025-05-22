@@ -26,3 +26,7 @@ env_logger = "0.10"
 rand = "0.9.1"
 hex = "0.4.3"
 glob = "0.3.2"
+anyhow = "1.0.98"
+
+[patch.crates-io]
+miden-client = { git = "https://github.com/slon2015/miden-client", branch = "feat/empty-script" }
