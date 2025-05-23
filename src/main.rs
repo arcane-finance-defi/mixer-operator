@@ -24,7 +24,6 @@ extern crate alloc;
 extern crate core;
 
 mod config;
-mod rpc;
 mod mixer;
 
 #[derive(Error, Debug)]
@@ -56,11 +55,6 @@ impl From<EndpointError> for ErrorResponse {
             error: value.to_string(),
         }
     }
-}
-
-#[get("/chain-tip")]
-async fn chain_tip() -> Result<(), Status> {
-    todo!()
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -124,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     rocket
         .manage(MixerState { client: sender })
-        .mount("/", routes![chain_tip, mix])
+        .mount("/", routes![mix])
         .launch()
         .await
         .unwrap();
