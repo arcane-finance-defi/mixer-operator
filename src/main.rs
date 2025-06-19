@@ -5,9 +5,9 @@ use miden_objects::account::AccountId;
 use miden_objects::note::NoteFile;
 use miden_objects::utils::{Deserializable, DeserializationError};
 use rocket::{get, routes};
-use rocket::http::Status;
+use rocket::http::{Method, Status};
 use rocket::serde::json::Json;
-use serde::{Deserialize, Serialize};
+use rocket::serde::{Deserialize, Serialize};
 use crate::config::Config;
 use rocket::State as RocketState;
 use crate::mixer::client::MixerClientError;
@@ -15,6 +15,7 @@ use tokio::sync::{oneshot, mpsc};
 use crate::mixer::{event_loop, MixClientRequest};
 use hex::{decode, FromHexError};
 use miden_objects::AccountIdError;
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use thiserror::Error;
 
 #[macro_use]
@@ -104,7 +105,17 @@ pub struct MixerState {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
-    let rocket = rocket::build();
+    let cors = CorsOptions::default()
+        .allowed_origins(AllowedOrigins::all())
+        .allowed_methods(
+            vec![Method::Get, Method::Post, Method::Patch]
+                .into_iter()
+                .map(From::from)
+                .collect(),
+        )
+        .allow_credentials(true);
+
+    let rocket = rocket::build().attach(cors.to_cors().unwrap());
 
     let figment = rocket.figment();
     let config: Config = figment.extract().expect("config");

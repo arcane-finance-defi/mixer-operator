@@ -76,6 +76,9 @@ impl MixerClient {
             store.clone() as Arc<dyn Store>,
             Arc::new(()),
             false,
+            "".to_string(),
+            None,
+            None
         );
 
         Ok(Self {
@@ -145,6 +148,14 @@ impl MixerClient {
 
         self.client.sync_state().await?;
 
+        let proof = self.client.get_note_inclusion_proof(note.id()).await?
+            .ok_or(MixerClientError::InvalidNoteTypeError())?;
+
+        let note_file = NoteFile::NoteWithProof(
+            note.clone(),
+            proof,
+        );
+
         let note_id = self.client.import_note(note_file).await?;
 
         let account = self.client.try_get_account(account_id.clone()).await;
@@ -159,10 +170,10 @@ impl MixerClient {
 
         let tx = self.client.new_transaction(
             account_id,
-            TransactionRequestBuilder::consume_notes(vec![note_id])
+            TransactionRequestBuilder::new()
                 .with_own_output_notes(vec![expected_bridge_note])
-                .with_empty_script()
-                .build()?
+                .with_empty_script(true)
+                .build_consume_notes(vec![note_id])?
         ).await?;
 
         let tx_id = tx.executed_transaction().id();

@@ -6,27 +6,15 @@ edition = "2024"
 [dependencies]
 dotenv = "0.15.0"
 miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0", features = ["std", "async"] }
-miden-client = { version = "0.8.1", features = ["tonic", "sqlite"] }
-miden-objects = "0.8.1"
+miden-client = { git = " ssh://git@github.com/arcane-finance-defi/miden-bridge-cli.git", features = ["tonic", "sqlite"] }
+miden-objects = "0.9.4"
 rocket = { version = "0.5.1", features = ["json"] }
 thiserror = "2.0.12"
 tokio = "1.44.2"
-url = "2.5.4"
-serde = { version = "1.0.219", features = ["derive"] }
-miden-lib = "0.8.0"
-miden-tx = "0.8.1"
-deadpool-sqlite = { version = "0.9", features = ["rt_tokio_1"] }
-rusqlite = { version = "0.32", features = ["vtab", "array", "bundled"] }
-async-trait = "0.1"
-crossbeam-channel = "0.5"
-futures = "0.3"
-tracing = "0.1.41"
-log = "0.4"
-env_logger = "0.10"
 rand = "0.9.1"
 hex = "0.4.3"
 glob = "0.3.2"
-anyhow = "1.0.98"
+rocket_cors = "0.6.0"
 
 [patch.crates-io]
-miden-client = { git = "https://github.com/slon2015/miden-client", branch = "feat/empty-script" }
+miden-client = { git = "https://github.com/slon2015/miden-client", branch = "feat/empty-script-v09" }
