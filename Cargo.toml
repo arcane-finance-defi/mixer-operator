@@ -1,9 +1,10 @@
 [package]
 name = "mixer-operator"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.98"
 dotenv = "0.15.0"
 miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0", features = ["std", "async"] }
 miden-client = { git = " ssh://git@github.com/arcane-finance-defi/miden-bridge-cli.git", features = ["tonic", "sqlite"] }
@@ -11,6 +12,7 @@ miden-objects = "0.9.4"
 rocket = { version = "0.5.1", features = ["json"] }
 thiserror = "2.0.12"
 tokio = "1.44.2"
+tracing = "0.1.41"
 rand = "0.9.1"
 hex = "0.4.3"
 glob = "0.3.2"
