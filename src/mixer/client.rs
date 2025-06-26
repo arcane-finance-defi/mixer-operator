@@ -103,7 +103,6 @@ impl MixerClient {
         supported_accounts_dir: PathBuf,
         public_accounts_to_import: Vec<String>,
     ) -> Result<(), MixerClientError> {
-
         let mut supported_accounts_dir = supported_accounts_dir.to_str().unwrap().to_string();
         supported_accounts_dir.push_str("/*.mac");
 
@@ -236,7 +235,6 @@ pub enum PublicNoteConstructorError {
 fn get_public_bridge_output_note(
     input_note: &Note,
 ) -> Result<OutputNote, PublicNoteConstructorError> {
-    
     let crosschain_asset = input_note
         .assets()
         .iter()

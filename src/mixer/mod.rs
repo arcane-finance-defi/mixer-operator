@@ -1,10 +1,7 @@
-use miden_objects::{
-    account::AccountId,
-    note::NoteFile
-};
+use miden_objects::{account::AccountId, note::NoteFile};
 use tokio::{
     runtime::Runtime,
-    sync::{mpsc, oneshot}
+    sync::{mpsc, oneshot},
 };
 
 use crate::config::Config;

@@ -1,5 +1,5 @@
 use tracing;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 pub fn init() {
     // Set up the tracing subscriber to log to stdout

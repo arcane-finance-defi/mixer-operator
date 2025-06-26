@@ -5,20 +5,21 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use mixer_operator::{
-    api::{MixerState, mix_post_handler},
-    mixer::{MixClientRequest, event_loop},
+    PACKAGE, VERSION,
+    api,
     config::Config,
     logging,
-    PACKAGE, VERSION
+    mixer::{MixClientRequest, event_loop},
+    state::MixerState,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
-    
+
     logging::init();
     info!("Starting {PACKAGE}, version {VERSION}");
-    
+
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
         .allowed_methods(
@@ -49,7 +50,13 @@ async fn main() -> anyhow::Result<()> {
     // main event loop for API launched by rocket
     rocket
         .manage(MixerState::new(sender))
-        .mount("/", rocket::routes![mix_post_handler])
+        // .manage(NotesStore)
+        .mount("/", rocket::routes![
+            api::mix_post_handler,
+            api::drafts::new_post_handler,
+            api::drafts::get_handler,
+            api::drafts::activate_post_handler,
+        ])
         .launch()
         .await?;
 

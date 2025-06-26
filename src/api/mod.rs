@@ -1,36 +1,23 @@
-use tokio::sync::{mpsc, oneshot};
-use hex::{FromHexError};
+use hex::FromHexError;
 use thiserror::Error;
+use tokio::sync::{mpsc, oneshot};
 use tracing::info_span;
 
 use miden_objects::{
+    AccountIdError,
     account::AccountId,
     note::NoteFile,
     utils::{Deserializable, DeserializationError},
-    AccountIdError
 };
 
 use rocket::{
-    post, routes,
-    http::{Method, Status},
-    serde::{json::Json, Deserialize, Serialize}, 
-    Responder, State as RocketState
+    http::{Method, Status}, post, routes, serde::{json::Json, Deserialize, Serialize}, Responder, Route, State as RocketState
 };
 
-use crate::mixer::{client::MixerClientError, MixClientRequest};
+use crate::mixer::{MixClientRequest, client::MixerClientError};
+use crate::state::MixerState;
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(crate = "rocket::serde")]
-pub struct MixRequest {
-    note_text: String,
-    account_id: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(crate = "rocket::serde")]
-pub struct MixResponse {
-    tx_id: String,
-}
+pub mod drafts;
 
 type MixResult = Result<String, MixerClientError>;
 
@@ -48,9 +35,9 @@ pub async fn mix_post_handler(
 
     let account_id = AccountId::from_hex(&data.account_id).map_err(EndpointError::from)?;
 
-    let (request, response) = 
-        oneshot::channel::<MixResult>();
+    let (request, response) = oneshot::channel::<MixResult>();
 
+    // send request for mixing to miden
     state
         .client
         .send(MixClientRequest::Mix {
@@ -61,26 +48,28 @@ pub async fn mix_post_handler(
         .await
         .map_err(EndpointError::from)?;
 
+    // await for result of mixing
     let response = response
         .await
-        .map_err(EndpointError::from)?
+        .map_err(EndpointError::from)? // TODO: двойной Result
         .map_err(EndpointError::from)?;
 
+    // return tx id
     Ok(Json(MixResponse { tx_id: response }))
 }
 
-pub struct MixerState {
-    client: mpsc::Sender<MixClientRequest>,
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct MixRequest {
+    note_text: String,
+    account_id: String,
 }
 
-impl MixerState {
-    pub fn new(client: mpsc::Sender<MixClientRequest>) -> Self {
-        MixerState {
-            client
-        }
-    }
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct MixResponse {
+    tx_id: String,
 }
-
 
 #[derive(Error, Debug)]
 pub enum EndpointError {
