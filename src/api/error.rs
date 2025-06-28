@@ -20,6 +20,8 @@ pub(super) enum EndpointError {
     RecvError(#[from] oneshot::error::RecvError),
     #[error(transparent)]
     MixerClientError(#[from] MixerClientError),
+    #[error("{0}")]
+    DatabaseLogicError(String),
     #[error(transparent)]
     DatabaseError(#[from] diesel::result::Error),
     #[error(transparent)]

@@ -4,6 +4,8 @@ use super::{schema, DbConnection};
 
 pub mod notes;
 
+// TODO: переделать на async 
+// ref https://github.com/mehcode/tokio-diesel/blob/master/examples/simple.rs
 pub struct NoteStorage {
     conn: PooledConnection<ConnectionManager<DbConnection>>,
 }

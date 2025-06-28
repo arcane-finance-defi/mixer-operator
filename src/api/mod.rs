@@ -6,6 +6,7 @@ use miden_objects::{
     AccountIdError,
     account::AccountId,
     note::NoteFile,
+    utils::Deserializable,
 };
 
 use rocket::{

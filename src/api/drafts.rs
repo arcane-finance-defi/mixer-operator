@@ -4,7 +4,6 @@ use rocket::response::Responder;
 use rocket::serde::json::Json;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{State, get, post};
-use thiserror::Error;
 use tracing::info_span;
 
 use crate::db::models::Storable;
@@ -24,9 +23,11 @@ pub async fn new_post_handler(
     let mut storage = NoteStorage::new(conn);
     
     let note = note_data.into_inner().try_into()?;
-    storage.add_note(note).map_err();
-    
-    Ok(Json(()))
+    match storage.add_note(note) {
+        Ok(1) => Ok(Json(())),
+        Ok(count) => Err(EndpointError::DatabaseLogicError(format!("Spurious db error, count={count}")).into()),
+        Err(error) => Err(EndpointError::DatabaseError(error).into()),
+    }
 }
 
 #[get("/drafts")]
@@ -70,7 +71,7 @@ pub fn get_note_by_id_handler(pool: &State<Pool>, note_id: String) -> Option<Jso
 }
 
 #[delete("/notes/<note_id>")]
-// #[named]
+#[named]
 pub fn delete_note_by_id_handler(pool: &State<Pool>, note_id: String) -> Status {
     let span = info_span!(function_name!());
     let _enter = span.enter();
