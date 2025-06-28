@@ -1,5 +1,4 @@
-use hex::FromHexError;
-use thiserror::Error;
+use error::EndpointError;
 use tokio::sync::{mpsc, oneshot};
 use tracing::info_span;
 
@@ -7,17 +6,20 @@ use miden_objects::{
     AccountIdError,
     account::AccountId,
     note::NoteFile,
-    utils::{Deserializable, DeserializationError},
 };
 
 use rocket::{
-    http::{Method, Status}, post, routes, serde::{json::Json, Deserialize, Serialize}, Responder, Route, State as RocketState
+    Responder, Route, State as RocketState,
+    http::{Method, Status},
+    post, routes,
+    serde::{Deserialize, Serialize, json::Json},
 };
 
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::state::MixerState;
 
 pub mod drafts;
+mod error;
 
 type MixResult = Result<String, MixerClientError>;
 
@@ -69,22 +71,6 @@ pub struct MixRequest {
 #[serde(crate = "rocket::serde")]
 pub struct MixResponse {
     tx_id: String,
-}
-
-#[derive(Error, Debug)]
-pub enum EndpointError {
-    #[error(transparent)]
-    HexError(#[from] FromHexError),
-    #[error(transparent)]
-    DeserializationError(#[from] DeserializationError),
-    #[error(transparent)]
-    AccountIdError(#[from] AccountIdError),
-    #[error(transparent)]
-    SendError(#[from] mpsc::error::SendError<MixClientRequest>),
-    #[error(transparent)]
-    RecvError(#[from] oneshot::error::RecvError),
-    #[error(transparent)]
-    MixerClientError(#[from] MixerClientError),
 }
 
 #[derive(Debug, Deserialize, Serialize, Responder)]

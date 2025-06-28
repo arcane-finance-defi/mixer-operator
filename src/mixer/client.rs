@@ -175,10 +175,13 @@ impl MixerClient {
             Err(MixerClientError::WrongNoteScriptRootError())
         }?;
 
+        // reconstruct expected note from the bridge
         let expected_bridge_note = get_public_bridge_output_note(note)?;
 
+        // sync state with blockchain
         self.client.sync_state().await?;
 
+        // obtain a cryptographic proof that note exists within the blockchain's state
         let proof = self
             .client
             .get_note_inclusion_proof(note.id())
@@ -189,6 +192,7 @@ impl MixerClient {
 
         let note_id = self.client.import_note(note_file).await?;
 
+        // obtain account to consume to
         let account = self.client.try_get_account(account_id.clone()).await;
 
         // TODO: errors cast
@@ -200,6 +204,7 @@ impl MixerClient {
             Ok(())
         }?;
 
+        // sync state
         self.client.sync_state().await?;
 
         let tx = self
@@ -212,10 +217,13 @@ impl MixerClient {
                     .build_consume_notes(vec![note_id])?,
             )
             .await?;
+        info!("Built transaction");
 
         let tx_id = tx.executed_transaction().id();
 
         self.client.submit_transaction(tx).await?;
+        info!("Submit transaction");
+
         self.cleanup().await?;
 
         Ok(tx_id.to_hex())
@@ -240,10 +248,12 @@ fn get_public_bridge_output_note(
         .iter()
         .last()
         .ok_or(PublicNoteConstructorError::FungibleAssetNotFound())?;
+
     let crosschain_asset = match crosschain_asset {
         Asset::Fungible(asset) => Ok(asset),
         _ => Err(PublicNoteConstructorError::FungibleAssetNotFound()),
     }?;
+
     let script = bridge();
     let assets = NoteAssets::default();
     let metadata = NoteMetadata::new(

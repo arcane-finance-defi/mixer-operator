@@ -11,6 +11,13 @@ pub struct Config {
     client_count: u32,
     private_account_dir: Option<PathBuf>,
     public_account_ids: String,
+    db: Database,
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Database {
+    pub url: String,
 }
 
 impl Config {
@@ -39,5 +46,9 @@ impl Config {
             .split(',')
             .map(String::from)
             .collect()
+    }
+
+    pub fn db(&self) -> &Database {
+        &self.db
     }
 }

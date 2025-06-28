@@ -5,10 +5,9 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use mixer_operator::{
-    PACKAGE, VERSION,
-    api,
+    PACKAGE, VERSION, api,
     config::Config,
-    logging,
+    db, logging,
     mixer::{MixClientRequest, event_loop},
     state::MixerState,
 };
@@ -35,9 +34,12 @@ async fn main() -> anyhow::Result<()> {
     let figment = rocket.figment();
     let config: Config = figment.extract().expect("config");
 
+    let db_url = &config.db().url;
+    let db_pool = db::connect(&db_url);
+
     let (sender, receiver) = mpsc::channel::<MixClientRequest>(100);
 
-    // event loop for miden worker
+    // event loop in separete async runtime for miden client
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -50,13 +52,16 @@ async fn main() -> anyhow::Result<()> {
     // main event loop for API launched by rocket
     rocket
         .manage(MixerState::new(sender))
-        // .manage(NotesStore)
-        .mount("/", rocket::routes![
-            api::mix_post_handler,
-            api::drafts::new_post_handler,
-            api::drafts::get_handler,
-            api::drafts::activate_post_handler,
-        ])
+        .manage(db_pool) // TODO: move out to MixerState?
+        .mount(
+            "/",
+            rocket::routes![
+                api::mix_post_handler,
+                api::drafts::new_post_handler,
+                api::drafts::get_handler,
+                api::drafts::activate_post_handler,
+            ],
+        )
         .launch()
         .await?;
 
