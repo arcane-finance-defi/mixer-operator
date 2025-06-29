@@ -4,8 +4,6 @@ use super::{schema, DbConnection};
 
 pub mod notes;
 
-// TODO: переделать на async 
-// ref https://github.com/mehcode/tokio-diesel/blob/master/examples/simple.rs
 pub struct NoteStorage {
     conn: PooledConnection<ConnectionManager<DbConnection>>,
 }
@@ -18,8 +16,8 @@ impl NoteStorage {
     }
 }
 
-// TODO: should be generic to storage 
-// TODO: get rid of &mut
+// TODO: should be generic over storage 
+// TODO: get rid of &mut use async connection pooler (no good for sqlite because of blocking api)
 pub trait Storable {
     fn add_note(&mut self, note: Note) -> QueryResult<usize>;
     fn get_notes(&mut self) -> QueryResult<Vec<Note>>;

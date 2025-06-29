@@ -4,3 +4,5 @@ rpc_timeout_ms = 10000
 client_count = 10
 public_account_ids = "0xf12903e6b9d03b2000013b8382c73e"
 port = 8001
+[default.db]
+url = "notes.db"

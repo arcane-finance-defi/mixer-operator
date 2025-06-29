@@ -19,7 +19,7 @@ use rocket::{
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::state::MixerState;
 
-pub mod drafts;
+pub mod note_drafts;
 mod error;
 
 type MixResult = Result<String, MixerClientError>;
