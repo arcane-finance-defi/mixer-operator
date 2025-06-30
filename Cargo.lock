@@ -2111,6 +2111,7 @@ dependencies = [
  "miden-bridge",
  "miden-client",
  "miden-objects",
+ "once_cell",
  "rand 0.9.1",
  "rocket",
  "rocket_cors",

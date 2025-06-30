@@ -14,12 +14,6 @@ pub struct Config {
     db: Database,
 }
 
-#[derive(Deserialize)]
-#[serde(crate = "rocket::serde")]
-pub struct Database {
-    pub url: String,
-}
-
 impl Config {
     pub fn rpc_url(&self) -> String {
         self.rpc_url.clone()
@@ -51,4 +45,10 @@ impl Config {
     pub fn db(&self) -> &Database {
         &self.db
     }
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Database {
+    pub url: String,
 }

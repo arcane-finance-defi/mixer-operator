@@ -12,7 +12,7 @@ use mixer_operator::{
     state::MixerState,
 };
 
-#[tokio::main] // actually should be rocket? tradeoffs?
+#[rocket::main]
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
@@ -49,21 +49,10 @@ async fn main() -> anyhow::Result<()> {
         event_loop(config, receiver, runtime);
     });
 
+    let mixer_state = MixerState::new(sender);
+    
     // main event loop for API launched by rocket
-    rocket
-        .manage(MixerState::new(sender))
-        .manage(db_pool) // TODO: move out to NoteStorage?
-        .mount(
-            "/api/v1/",
-            rocket::routes![
-                api::mix_post_handler,
-                api::note_drafts::post_new_handler,
-                api::note_drafts::get_handler,
-                api::note_drafts::get_by_id_handler,
-                api::note_drafts::post_activate_by_id_handler,
-                api::note_drafts::delete_by_id_handler,
-            ],
-        )
+    mixer_operator::rocket(mixer_state, db_pool)
         .launch()
         .await?;
 
