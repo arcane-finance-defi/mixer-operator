@@ -18,6 +18,14 @@ pub fn rocket(mixer_state: MixerState, db_pool: Pool) -> Rocket<Build> {
     rocket::build()
     .manage(mixer_state)
     .manage(db_pool) // TODO: move out to NoteStorage?
+    // legacy api
+    .mount(
+        "/",
+        rocket::routes![
+            api::mix_post_handler, // Mounting /mix
+        ],
+    )
+    // new api
     .mount(
         "/api/v1/",
         rocket::routes![

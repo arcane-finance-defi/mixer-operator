@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use mixer_operator::{
-    PACKAGE, VERSION, api,
+    PACKAGE, VERSION,
     config::Config,
     db, logging,
     mixer::{MixClientRequest, event_loop},
