@@ -1,15 +1,19 @@
+use std::ops::Not;
+
 use function_name::named;
-use rocket::http::uri::Error;
 use rocket::http::Status;
-use rocket::response::{status, Responder};
+use rocket::http::uri::Error;
+use rocket::response::{Responder, status};
 use rocket::serde::json::Json;
 use rocket::serde::{Deserialize, Serialize};
-use rocket::{delete, get, post, State};
+use rocket::{State, delete, get, post};
 use tracing::info_span;
 
+use super::{MixRequest, error::EndpointError};
 use crate::db::models::Storable as _;
+use crate::db::schema::notes::note_id;
 use crate::db::{Pool, models::NoteStorage, models::notes::Note as DbNote};
-use super::{error::EndpointError, MixRequest};
+use crate::mixer::utils;
 
 #[post("/note-drafts/new", data = "<note_data>")]
 #[named]
@@ -22,13 +26,16 @@ pub async fn post_new_handler(
 
     let conn = pool.get().map_err(EndpointError::from)?;
     let mut storage = NoteStorage::new(conn);
-    
+
     let note: DbNote = note_data.into_inner().try_into()?;
     let note_id = note.note_id.clone();
 
     match storage.add_note(note) {
         Ok(1) => Ok(Json(note_id)),
-        Ok(count) => Err(EndpointError::DatabaseLogicError(format!("Spurious db error, count={count}")).into()),
+        Ok(count) => Err(EndpointError::DatabaseLogicError(format!(
+            "Spurious db error, count={count}"
+        ))
+        .into()),
         Err(error) => Err(EndpointError::DatabaseError(error).into()),
     }
 }
@@ -50,7 +57,10 @@ pub async fn get_handler(pool: &State<Pool>) -> Result<Json<Vec<String>>, ErrorR
 
 #[get("/note-drafts/<note_id>")]
 #[named]
-pub fn get_by_id_handler(note_id: &str, pool: &State<Pool>) -> Result<Option<Json<String>>, ErrorResponse> {
+pub fn get_by_id_handler(
+    note_id: &str,
+    pool: &State<Pool>,
+) -> Result<Option<Json<String>>, ErrorResponse> {
     let span = info_span!(function_name!());
     let _enter = span.enter();
 
@@ -66,7 +76,10 @@ pub fn get_by_id_handler(note_id: &str, pool: &State<Pool>) -> Result<Option<Jso
 
 #[post("/note-drafts/activate/<note_id>")]
 #[named]
-pub async fn post_activate_by_id_handler(note_id: &str, pool: &State<Pool>) -> Result<Option<Json<String>>, ErrorResponse> {
+pub async fn post_activate_by_id_handler(
+    note_id: &str,
+    pool: &State<Pool>,
+) -> Result<Option<Json<String>>, ErrorResponse> {
     let span = info_span!(function_name!());
     let _enter = span.enter();
 
@@ -92,7 +105,10 @@ pub fn delete_by_id_handler(pool: &State<Pool>, note_id: &str) -> Result<Status,
     match storage.delete_note_by_id(note_id) {
         Ok(0) => Ok(Status::NotFound),
         Ok(1) => Ok(Status::Accepted),
-        Ok(count) => Err(EndpointError::DatabaseLogicError(format!("Spurious db error, count={count}")).into()),
+        Ok(count) => Err(EndpointError::DatabaseLogicError(format!(
+            "Spurious db error, count={count}"
+        ))
+        .into()),
         Err(error) => Err(EndpointError::DatabaseError(error).into()),
     }
 }
@@ -112,18 +128,26 @@ impl From<EndpointError> for ErrorResponse {
     }
 }
 
-// TODO: should be able to extract note without miden client
+// TODO: should return normal error type
 impl TryFrom<MixRequest> for crate::db::models::notes::Note {
     type Error = ErrorResponse; // ! FIXME: bad, should return client error convertible to ErrorResponse
 
     fn try_from(req: MixRequest) -> Result<Self, Self::Error> {
-        // TODO: validate note with client and return account_id, note and note_id
-        let note_id = "asd"; // ! FIXME
-        let note_str = "sdf"; // ! FIXME
+        let note_file = utils::from_hex_string(&req.note_text).map_err(|e| ErrorResponse {
+            error: format!("error reading note content: {e}"),
+        })?;
+
+        if utils::is_note_with_proof(note_file).not() {
+            return Err(ErrorResponse {
+                error: "note is without proof".to_string(),
+            });
+        }
+
+        let note_id: NoteId = utils::extract_note_id(note_file);
 
         Ok(crate::db::models::notes::Note {
             note_id: note_id.to_string(),
-            note: note_str.to_string(),
+            note: note_file.to_string(),
             account_id: req.account_id,
         })
     }

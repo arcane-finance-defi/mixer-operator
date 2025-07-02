@@ -2,25 +2,22 @@ use error::EndpointError;
 use tokio::sync::{mpsc, oneshot};
 use tracing::info_span;
 
-use miden_objects::{
-    AccountIdError,
-    account::AccountId,
-    note::NoteFile,
-    utils::Deserializable,
-};
+use miden_objects::{AccountIdError, account::AccountId, note::NoteFile, utils::Deserializable};
 
 use rocket::{
     Responder, Route, State as RocketState,
     http::{Method, Status},
-    post, routes,
+    post,
+    response::Redirect,
+    routes,
     serde::{Deserialize, Serialize, json::Json},
 };
 
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::state::MixerState;
 
-pub mod note_drafts;
 mod error;
+pub mod note_drafts;
 
 type MixResult = Result<String, MixerClientError>;
 
@@ -54,7 +51,7 @@ pub async fn mix_post_handler(
     // await for result of mixing
     let response = response
         .await
-        .map_err(EndpointError::from)? // TODO: двойной Result
+        .map_err(EndpointError::from)? // TODO: doubled Result unwraping
         .map_err(EndpointError::from)?;
 
     // return tx id
@@ -86,5 +83,26 @@ impl From<EndpointError> for ErrorResponse {
         Self {
             error: value.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::MixRequest;
+    use rocket::serde::json;
+
+    #[test]
+    fn test_request_serder() {
+        let req = MixRequest {
+            note_text: "hexsomehex".to_string(),
+            account_id: "0xsomehex".to_string(),
+        };
+
+        let serialized_request = json::to_string(&req).expect("Serialized MixRequest");
+
+        assert_eq!(
+            serialized_request,
+            r#"{"note_text":"hexsomehex","account_id":"0xsomehex"}"#
+        );
     }
 }

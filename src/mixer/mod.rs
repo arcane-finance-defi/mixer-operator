@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::mixer::client::{MixerClient, MixerClientError};
 
 pub mod client;
+pub mod utils;
 
 pub enum MixClientRequest {
     Mix {

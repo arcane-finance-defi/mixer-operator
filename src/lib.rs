@@ -16,25 +16,25 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn rocket(mixer_state: MixerState, db_pool: Pool) -> Rocket<Build> {
     rocket::build()
-    .manage(mixer_state)
-    .manage(db_pool) // TODO: move out to NoteStorage?
-    // legacy api
-    .mount(
-        "/",
-        rocket::routes![
-            api::mix_post_handler, // Mounting /mix
-        ],
-    )
-    // new api
-    .mount(
-        "/api/v1/",
-        rocket::routes![
-            api::mix_post_handler,
-            api::note_drafts::post_new_handler,
-            api::note_drafts::get_handler,
-            api::note_drafts::get_by_id_handler,
-            api::note_drafts::post_activate_by_id_handler,
-            api::note_drafts::delete_by_id_handler,
-        ],
-    )
+        .manage(mixer_state)
+        .manage(db_pool) // TODO: move out to NoteStorage?
+        // legacy api
+        .mount(
+            "/",
+            rocket::routes![
+                api::mix_post_handler, // Mounting /mix
+            ],
+        )
+        // new api
+        .mount(
+            "/api/v1/",
+            rocket::routes![
+                api::mix_post_handler,
+                api::note_drafts::post_new_handler,
+                api::note_drafts::get_handler,
+                api::note_drafts::get_by_id_handler,
+                api::note_drafts::post_activate_by_id_handler,
+                api::note_drafts::delete_by_id_handler,
+            ],
+        )
 }

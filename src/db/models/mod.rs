@@ -1,6 +1,9 @@
-use diesel::{prelude::*, r2d2::{ConnectionManager, PooledConnection}};
+use super::{DbConnection, schema};
+use diesel::{
+    prelude::*,
+    r2d2::{ConnectionManager, PooledConnection},
+};
 use notes::Note;
-use super::{schema, DbConnection};
 
 pub mod notes;
 
@@ -10,13 +13,11 @@ pub struct NoteStorage {
 
 impl NoteStorage {
     pub fn new(conn: PooledConnection<ConnectionManager<DbConnection>>) -> Self {
-        NoteStorage { 
-            conn,
-        }
+        NoteStorage { conn }
     }
 }
 
-// TODO: should be generic over storage 
+// TODO: should be generic over storage
 // TODO: get rid of &mut use async connection pooler (no good for sqlite because of blocking api)
 pub trait Storable {
     fn add_note(&mut self, note: Note) -> QueryResult<usize>;

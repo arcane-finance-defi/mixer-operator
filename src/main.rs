@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let mixer_state = MixerState::new(sender);
-    
+
     // main event loop for API launched by rocket
     mixer_operator::rocket(mixer_state, db_pool)
         .launch()

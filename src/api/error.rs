@@ -1,10 +1,10 @@
-use hex::FromHexError;
-use miden_objects::utils::DeserializationError;
-use miden_objects::AccountIdError;
-use tokio::sync::{mpsc, oneshot};
-use crate::mixer::client::MixerClientError;
 use crate::mixer::MixClientRequest;
+use crate::mixer::client::MixerClientError;
+use hex::FromHexError;
+use miden_objects::AccountIdError;
+use miden_objects::utils::DeserializationError;
 use thiserror::Error;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Error, Debug)]
 pub(super) enum EndpointError {

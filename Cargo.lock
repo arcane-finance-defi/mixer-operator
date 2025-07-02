@@ -2102,6 +2102,7 @@ name = "mixer-operator"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "chrono",
  "diesel",
  "diesel_cli",
  "dotenv",
