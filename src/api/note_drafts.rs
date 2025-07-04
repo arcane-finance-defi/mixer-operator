@@ -2,7 +2,6 @@ use std::ops::Not;
 
 use function_name::named;
 use rocket::http::Status;
-use rocket::http::uri::Error;
 use rocket::response::{Responder, status};
 use rocket::serde::json::Json;
 use rocket::serde::{Deserialize, Serialize};
@@ -10,9 +9,7 @@ use rocket::{State, delete, get, post};
 use tracing::info_span;
 
 use super::{MixRequest, error::EndpointError};
-use crate::db::models::Storable as _;
-use crate::db::schema::notes::note_id;
-use crate::db::{Pool, models::NoteStorage, models::notes::Note as DbNote};
+use crate::db::{Pool, models::NoteStorage, models::Storable as _, models::notes::Note as DbNote};
 use crate::mixer::utils;
 
 #[post("/note-drafts/new", data = "<note_data>")]
@@ -129,6 +126,9 @@ impl From<EndpointError> for ErrorResponse {
 }
 
 // TODO: should return normal error type
+// TODO: use TypeState + Composition pattern to cover Note conversions and state transitions
+// E.g. ScheduledNote -> PendingNote -> ActivatedNote -> FinishedNote
+// couple with status field in Note table
 impl TryFrom<MixRequest> for crate::db::models::notes::Note {
     type Error = ErrorResponse; // ! FIXME: bad, should return client error convertible to ErrorResponse
 
@@ -137,18 +137,20 @@ impl TryFrom<MixRequest> for crate::db::models::notes::Note {
             error: format!("error reading note content: {e}"),
         })?;
 
-        if utils::is_note_with_proof(note_file).not() {
+        if utils::is_note_with_proof(&note_file).not() {
             return Err(ErrorResponse {
                 error: "note is without proof".to_string(),
             });
         }
 
-        let note_id: NoteId = utils::extract_note_id(note_file);
+        let note_id: miden_objects::note::NoteId = utils::extract_note_id(&note_file);
 
         Ok(crate::db::models::notes::Note {
             note_id: note_id.to_string(),
-            note: note_file.to_string(),
+            note: utils::to_hex_string(note_file),
             account_id: req.account_id,
+            status: 0,
+            scheduled_datetime: None,
         })
     }
 }

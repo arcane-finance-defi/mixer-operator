@@ -3,15 +3,15 @@ use miden_client::utils::Serializable;
 use miden_objects::note::{NoteFile, NoteId};
 use miden_objects::utils::{Deserializable, ToHex};
 
-pub fn extract_note_id(note_file: NoteFile) -> NoteId {
-    match &note_file {
+pub fn extract_note_id(note_file: &NoteFile) -> NoteId {
+    match note_file {
         NoteFile::NoteId(id) => *id,
         NoteFile::NoteDetails { details, .. } => details.id(),
         NoteFile::NoteWithProof(note, _) => note.id(),
     }
 }
 
-pub fn is_note_with_proof(note_file: NoteFile) -> bool {
+pub fn is_note_with_proof(note_file: &NoteFile) -> bool {
     matches!(note_file, NoteFile::NoteWithProof(..))
 }
 
