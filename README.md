@@ -4,26 +4,15 @@ Mixer operator is rust based offchain service that generates the consume-note tr
 
 ## API
 
-The service provides singe endpoint `POST /mix` that generates tx from the note and account and returns tx id
-
-## Configuration
-
-___./Rocket.toml___ contains the configs for the service
-
-### Config keys
-
-* ___rpc_url___ URL of miden node GRPC api
-* ___rpc_timeout_ms___ miden rpc request timeout in milliseconds
-* ___public_account_ids___ comma separated list of public faucet accounts on miden chain to work with
-
-## Prerequisites
+The service provides wasm mixer-operator that generates tx from the note and account and returns tx id
 
 * rust v1.87.0
 
-## How to run
+## How to build
 
 Start the service with the cmd
 
 ```
-cargo run --release
+RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web --out-dir pkg
+
 ```

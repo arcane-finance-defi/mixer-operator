@@ -3,18 +3,52 @@ name = "mixer-operator"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-dotenv = "0.15.0"
-miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0", features = ["std", "async"] }
-miden-client = { git = " ssh://git@github.com/arcane-finance-defi/miden-bridge-cli.git", features = ["tonic", "sqlite"] }
-miden-objects = "0.9.4"
-rocket = { version = "0.5.1", features = ["json"] }
-thiserror = "2.0.12"
-tokio = "1.44.2"
-rand = "0.9.1"
-hex = "0.4.3"
-glob = "0.3.2"
-rocket_cors = "0.6.0"
+resolver = "2"
 
-[patch.crates-io]
-miden-client = { git = "https://github.com/slon2015/miden-client", branch = "feat/empty-script-v09" }
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# WebAssembly
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "console",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Window",
+    "Crypto",
+    "SubtleCrypto",
+] }
+console_error_panic_hook = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async (WASM compatible)
+tokio = { version = "1.44.2", default-features = false, features = ["macros", "rt"] }
+
+# Utilities
+thiserror = "2.0.12"
+hex = "0.4.3"
+#rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
+glob = "0.3.2"
+
+# Force all dependencies to use WASM-safe getrandom
+getrandom = { version = "0.3.3", default-features = false , features = ["wasm_js"] }
+
+# Miden
+miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", version = "0.1.0", default-features = false }
+miden-client = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-cli.git", default-features = false, features = ["idxdb", "web-tonic"] }
+miden-objects = { version = "0.9.4", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+#[patch.crates-io]
+#getrandom = { version = "0.2.15", features = ["js"] }
