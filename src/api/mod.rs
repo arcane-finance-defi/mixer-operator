@@ -1,18 +1,12 @@
-use error::EndpointError;
-use tokio::sync::{mpsc, oneshot};
-use tracing::info_span;
-
-use miden_objects::{AccountIdError, account::AccountId, note::NoteFile, utils::Deserializable};
-
+use miden_objects::{account::AccountId, note::NoteFile, utils::Deserializable};
+use tokio::sync::oneshot;
+use tracing;
 use rocket::{
-    Responder, Route, State as RocketState,
-    http::{Method, Status},
-    post,
-    response::Redirect,
-    routes,
+    Responder, State as RocketState, post,
     serde::{Deserialize, Serialize, json::Json},
 };
 
+use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::state::MixerState;
 
@@ -22,13 +16,11 @@ pub mod note_drafts;
 type MixResult = Result<String, MixerClientError>;
 
 #[post("/mix", data = "<data>")]
+#[tracing::instrument]
 pub async fn mix_post_handler(
     data: Json<MixRequest>,
     state: &RocketState<MixerState>,
 ) -> Result<Json<MixResponse>, ErrorResponse> {
-    let span = info_span!("mix_post_handler");
-    let _enter = span.enter();
-
     let note_bytes = hex::decode(&data.note_text).map_err(EndpointError::from)?;
     let note_file =
         NoteFile::read_from_bytes(note_bytes.as_slice()).map_err(EndpointError::from)?;
@@ -53,6 +45,7 @@ pub async fn mix_post_handler(
         .await
         .map_err(EndpointError::from)? // TODO: doubled Result unwraping
         .map_err(EndpointError::from)?;
+    tracing::warn!("{response:#?}");
 
     // return tx id
     Ok(Json(MixResponse { tx_id: response }))

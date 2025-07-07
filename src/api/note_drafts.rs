@@ -1,26 +1,21 @@
 use std::ops::Not;
 
-use function_name::named;
 use rocket::http::Status;
 use rocket::response::{Responder, status};
 use rocket::serde::json::Json;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{State, delete, get, post};
-use tracing::info_span;
 
 use super::{MixRequest, error::EndpointError};
 use crate::db::{Pool, models::NoteStorage, models::Storable as _, models::notes::Note as DbNote};
 use crate::mixer::utils;
 
 #[post("/note-drafts/new", data = "<note_data>")]
-#[named]
+#[tracing::instrument]
 pub async fn post_new_handler(
     note_data: Json<MixRequest>,
     pool: &State<Pool>,
 ) -> Result<Json<String>, ErrorResponse> {
-    let span = info_span!(function_name!());
-    let _enter = span.enter();
-
     let conn = pool.get().map_err(EndpointError::from)?;
     let mut storage = NoteStorage::new(conn);
 
@@ -38,11 +33,8 @@ pub async fn post_new_handler(
 }
 
 #[get("/note-drafts")]
-#[named]
+#[tracing::instrument]
 pub async fn get_handler(pool: &State<Pool>) -> Result<Json<Vec<String>>, ErrorResponse> {
-    let span = info_span!(function_name!());
-    let _enter = span.enter();
-
     let conn = pool.get().map_err(EndpointError::from)?;
     let mut storage = NoteStorage::new(conn);
 
@@ -53,14 +45,11 @@ pub async fn get_handler(pool: &State<Pool>) -> Result<Json<Vec<String>>, ErrorR
 }
 
 #[get("/note-drafts/<note_id>")]
-#[named]
-pub fn get_by_id_handler(
+#[tracing::instrument]
+pub async fn get_by_id_handler(
     note_id: &str,
     pool: &State<Pool>,
 ) -> Result<Option<Json<String>>, ErrorResponse> {
-    let span = info_span!(function_name!());
-    let _enter = span.enter();
-
     let conn = pool.get().map_err(EndpointError::from)?;
     let mut storage = NoteStorage::new(conn);
 
@@ -72,14 +61,11 @@ pub fn get_by_id_handler(
 }
 
 #[post("/note-drafts/activate/<note_id>")]
-#[named]
+#[tracing::instrument]
 pub async fn post_activate_by_id_handler(
     note_id: &str,
     pool: &State<Pool>,
 ) -> Result<Option<Json<String>>, ErrorResponse> {
-    let span = info_span!(function_name!());
-    let _enter = span.enter();
-
     let conn = pool.get().map_err(EndpointError::from)?;
     let mut storage = NoteStorage::new(conn);
 
@@ -91,11 +77,11 @@ pub async fn post_activate_by_id_handler(
 }
 
 #[delete("/note-drafts/<note_id>")]
-#[named]
-pub fn delete_by_id_handler(pool: &State<Pool>, note_id: &str) -> Result<Status, ErrorResponse> {
-    let span = info_span!(function_name!());
-    let _enter = span.enter();
-
+#[tracing::instrument]
+pub async fn delete_by_id_handler(
+    pool: &State<Pool>,
+    note_id: &str,
+) -> Result<Status, ErrorResponse> {
     let conn = pool.get().map_err(EndpointError::from)?;
     let mut storage = NoteStorage::new(conn);
 

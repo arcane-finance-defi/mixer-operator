@@ -35,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let config: Config = figment.extract().expect("config");
 
     let db_url = &config.db().url;
+    // TODO: deadpool + Arc
     let db_pool = db::connect(&db_url);
 
     let (sender, receiver) = mpsc::channel::<MixClientRequest>(100);
