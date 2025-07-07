@@ -15,11 +15,11 @@ pub(super) enum EndpointError {
     #[error(transparent)]
     AccountIdError(#[from] AccountIdError),
     #[error(transparent)]
-    SendError(#[from] mpsc::error::SendError<MixClientRequest>),
+    SendError(#[from] Box<mpsc::error::SendError<MixClientRequest>>),
     #[error(transparent)]
     RecvError(#[from] oneshot::error::RecvError),
     #[error(transparent)]
-    MixerClientError(#[from] MixerClientError),
+    MixerClientError(#[from] Box<MixerClientError>),
     #[error("{0}")]
     DatabaseLogicError(String),
     #[error(transparent)]

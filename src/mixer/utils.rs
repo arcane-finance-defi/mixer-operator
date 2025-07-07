@@ -17,7 +17,7 @@ pub fn is_note_with_proof(note_file: &NoteFile) -> bool {
 
 // can't use TryFrom trait without NewType due to Rust orphan's rules
 pub fn from_hex_string(hexstr: &str) -> anyhow::Result<NoteFile> {
-    let note_bytes = hex::decode(&hexstr).context("decoding from hex &str")?;
+    let note_bytes = hex::decode(hexstr).context("decoding from hex &str")?;
     let note_file =
         NoteFile::read_from_bytes(note_bytes.as_slice()).context("reading note file from bytes")?;
     Ok(note_file)

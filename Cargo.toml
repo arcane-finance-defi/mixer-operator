@@ -27,7 +27,8 @@ rocket = { version = "0.5.1", features = ["json"] }
 rocket_cors = "0.6.0"
 thiserror = "2.0.12"
 tokio = "1.44.2"
-tracing = { version = "0.1.41", features = ["max_level_debug", "release_max_level_info"] }
+tracing = { version = "0.1.41", features = ["max_level_trace", "release_max_level_info"] }
+tracing-log = "0.2.0"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 [patch.crates-io]

@@ -1,10 +1,10 @@
 use miden_objects::{account::AccountId, note::NoteFile, utils::Deserializable};
-use tokio::sync::oneshot;
-use tracing;
 use rocket::{
     Responder, State as RocketState, post,
     serde::{Deserialize, Serialize, json::Json},
 };
+use tokio::sync::oneshot;
+use tracing;
 
 use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
@@ -38,14 +38,13 @@ pub async fn mix_post_handler(
             response_sink: request,
         })
         .await
-        .map_err(EndpointError::from)?;
+        .map_err(|e| EndpointError::from(Box::new(e)))?;
 
     // await for result of mixing
     let response = response
         .await
-        .map_err(EndpointError::from)? // TODO: doubled Result unwraping
-        .map_err(EndpointError::from)?;
-    tracing::warn!("{response:#?}");
+        .map_err(EndpointError::from)?
+        .map_err(|e| EndpointError::from(Box::new(e)))?;
 
     // return tx id
     Ok(Json(MixResponse { tx_id: response }))

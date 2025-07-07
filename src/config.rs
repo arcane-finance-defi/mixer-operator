@@ -30,8 +30,7 @@ impl Config {
     pub fn private_account_dir(&self) -> PathBuf {
         self.private_account_dir
             .clone()
-            .or(Some(DEFAULT_PRIVATE_ACCOUNTS_DIR.into()))
-            .unwrap()
+            .unwrap_or(DEFAULT_PRIVATE_ACCOUNTS_DIR.into())
     }
 
     pub fn public_account_ids(&self) -> Vec<String> {
