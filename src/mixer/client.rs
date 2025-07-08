@@ -161,14 +161,9 @@ impl MixerClient {
 
     pub async fn mix(
         &mut self,
-        note_file: NoteFile,
+        note: Note,
         account_id: AccountId,
     ) -> Result<String, MixerClientError> {
-        let note = match note_file {
-            NoteFile::NoteWithProof(ref note, _) => Ok(note),
-            _ => Err(MixerClientError::InvalidNoteTypeError()),
-        }?;
-
         if note.recipient().script().root() == croschain().root() {
             Ok(())
         } else {
@@ -176,7 +171,7 @@ impl MixerClient {
         }?;
 
         // reconstruct expected note from the bridge
-        let expected_bridge_note = get_public_bridge_output_note(note)?;
+        let expected_bridge_note = get_public_bridge_output_note(&note)?;
 
         // sync state with blockchain
         self.client.sync_state().await?;

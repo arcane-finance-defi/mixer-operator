@@ -1,6 +1,6 @@
 use dotenv::dotenv;
 use rocket::http::Method;
-use rocket_cors::{AllowedOrigins, CorsOptions};
+use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -21,15 +21,18 @@ async fn main() -> anyhow::Result<()> {
 
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
+        .send_wildcard(true)
         .allowed_methods(
-            vec![Method::Get, Method::Post, Method::Patch]
+            vec![Method::Get, Method::Post, Method::Patch, Method::Put, Method::Delete, Method::Options]
                 .into_iter()
                 .map(From::from)
                 .collect(),
         )
-        .allow_credentials(true);
+        .allowed_headers(AllowedHeaders::all())
+        .to_cors()
+        .expect("CORS build error");
 
-    let rocket = rocket::build().attach(cors.to_cors().unwrap());
+    let rocket = rocket::build();
 
     let figment = rocket.figment();
     let config: Config = figment.extract().expect("config");
@@ -53,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let mixer_state = MixerState::new(sender);
 
     // main event loop for API launched by rocket
-    mixer_operator::rocket(mixer_state, db_pool)
+    mixer_operator::rocket(mixer_state, db_pool, cors)
         .launch()
         .await?;
 

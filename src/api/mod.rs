@@ -1,4 +1,10 @@
+use miden_bridge::notes::BRIDGE_USECASE;
+use miden_bridge::notes::crosschain::new_crosschain_note;
+use miden_bridge::utils::evm_address_to_felts;
+use miden_client::{Felt, Word};
 use miden_objects::{account::AccountId, note::NoteFile, utils::Deserializable};
+use miden_objects::note::{Note, NoteTag};
+use miden_objects::utils::parse_hex_string_as_word;
 use tokio::sync::oneshot;
 use tracing;
 use rocket::{
@@ -8,6 +14,7 @@ use rocket::{
 
 use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
+use crate::mixer::utils::word_from_hex;
 use crate::state::MixerState;
 
 mod error;
@@ -21,9 +28,9 @@ pub async fn mix_post_handler(
     data: Json<MixRequest>,
     state: &RocketState<MixerState>,
 ) -> Result<Json<MixResponse>, ErrorResponse> {
-    let note_bytes = hex::decode(&data.note_text).map_err(EndpointError::from)?;
-    let note_file =
-        NoteFile::read_from_bytes(note_bytes.as_slice()).map_err(EndpointError::from)?;
+    let note = Note::try_from(&data.0).map_err(|err| ErrorResponse {
+        error: err.to_string(),
+    })?;
 
     let account_id = AccountId::from_hex(&data.account_id).map_err(EndpointError::from)?;
 
@@ -33,7 +40,7 @@ pub async fn mix_post_handler(
     state
         .client
         .send(MixClientRequest::Mix {
-            note_file,
+            note,
             account_id,
             response_sink: request,
         })
@@ -54,8 +61,33 @@ pub async fn mix_post_handler(
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct MixRequest {
-    note_text: String,
+    dest_chain_id: u64,
+    dest_address: String,
+    serial_num_hex: String,
+    bridge_serial_num_hex: String,
+    amount: u64,
     account_id: String,
+}
+
+impl TryFrom<&MixRequest> for Note {
+    type Error = anyhow::Error;
+    fn try_from(value: &MixRequest) -> Result<Self, Self::Error> {
+        let faucet_id = AccountId::from_hex(&value.account_id)?;
+        let note = new_crosschain_note(
+            parse_hex_string_as_word(value.serial_num_hex.as_str())
+                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?,
+            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
+                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?,
+            Felt::new(value.dest_chain_id),
+            evm_address_to_felts(&value.dest_address)?,
+            faucet_id,
+            value.amount,
+            faucet_id,
+            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?
+        )?;
+
+        Ok(note)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]

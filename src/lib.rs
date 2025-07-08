@@ -1,4 +1,5 @@
 use rocket::{Build, Rocket};
+use rocket_cors::Cors;
 
 pub mod api;
 pub mod config;
@@ -14,10 +15,10 @@ use crate::state::MixerState;
 pub const PACKAGE: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn rocket(mixer_state: MixerState, db_pool: Pool) -> Rocket<Build> {
+pub fn rocket(mixer_state: MixerState, db_pool: Pool, cors: Cors) -> Rocket<Build> {
     rocket::build()
         .manage(mixer_state)
-        .manage(db_pool) // TODO: move out to NoteStorage?
+        .manage(db_pool)// TODO: move out to NoteStorage?
         // legacy api
         .mount(
             "/",
@@ -37,4 +38,5 @@ pub fn rocket(mixer_state: MixerState, db_pool: Pool) -> Rocket<Build> {
                 api::note_drafts::delete_by_id_handler,
             ],
         )
+        .attach(cors)
 }

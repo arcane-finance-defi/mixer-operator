@@ -1,4 +1,5 @@
-use miden_objects::{account::AccountId, note::NoteFile};
+use miden_objects::account::AccountId;
+use miden_objects::note::Note;
 use tokio::{
     runtime::Runtime,
     sync::{mpsc, oneshot},
@@ -12,7 +13,7 @@ pub mod utils;
 
 pub enum MixClientRequest {
     Mix {
-        note_file: NoteFile,
+        note: Note,
         account_id: AccountId,
         response_sink: oneshot::Sender<Result<String, MixerClientError>>,
     },
@@ -40,11 +41,11 @@ pub fn event_loop(
 
         match request {
             MixClientRequest::Mix {
-                note_file,
+                note,
                 account_id,
                 response_sink,
             } => {
-                let result = runtime.block_on(client.mix(note_file, account_id));
+                let result = runtime.block_on(client.mix(note, account_id));
 
                 response_sink.send(result).unwrap();
             }

@@ -2,6 +2,7 @@ use anyhow::Context;
 use miden_client::utils::Serializable;
 use miden_objects::note::{NoteFile, NoteId};
 use miden_objects::utils::{Deserializable, ToHex};
+use miden_objects::Word;
 
 pub fn extract_note_id(note_file: &NoteFile) -> NoteId {
     match note_file {
@@ -25,4 +26,11 @@ pub fn from_hex_string(hexstr: &str) -> anyhow::Result<NoteFile> {
 
 pub fn to_hex_string(note_file: NoteFile) -> String {
     note_file.to_bytes().to_hex()
+}
+
+pub fn word_from_hex(hexstr: &str) -> anyhow::Result<Word> {
+    let bytes = hex::decode(&hexstr).context("decoding from hex str")?;
+    let word = Word::read_from_bytes(&bytes).context("reading word from bytes")?;
+
+    Ok(word)
 }
