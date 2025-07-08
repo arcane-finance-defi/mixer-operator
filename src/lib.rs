@@ -5,6 +5,13 @@ use miden_objects::account::AccountId;
 use miden_objects::note::NoteFile;
 use miden_objects::utils::DeserializationError;
 use miden_objects::AccountIdError;
+use wasm_bindgen_futures::spawn_local; // или future_to_promise, если нужно
+// подключаем файл client.rs
+mod mixer;
+
+// ре-экспортируем всё из client
+pub use mixer::*;
+
 /*use crate::config::Config;
 use crate::mixer::client::MixerClientError;
 use thiserror::Error;
