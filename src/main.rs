@@ -1,24 +1,19 @@
+use anyhow::Context as _;
 use dotenv::dotenv;
-use rocket::http::Method;
+use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use tokio::sync::mpsc;
 use tracing::info;
 
 use mixer_operator::{
-    PACKAGE, VERSION,
+    PACKAGE, VERSION, api,
     config::Config,
     db, logging,
     mixer::{MixClientRequest, event_loop},
     state::MixerState,
 };
 
-#[rocket::main]
-async fn main() -> anyhow::Result<()> {
-    dotenv().ok();
-
-    logging::init();
-    info!("Starting {PACKAGE}, version {VERSION}");
-
+fn rocket(mixer_state: MixerState, db_pool: db::Pool) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
         .allowed_methods(
@@ -29,10 +24,43 @@ async fn main() -> anyhow::Result<()> {
         )
         .allow_credentials(true);
 
-    let rocket = rocket::build().attach(cors.to_cors().unwrap());
+    let rocket: rocket::Rocket<rocket::Build> =
+        rocket::build().attach(cors.to_cors().expect("rocket skeleton with CORS fairing"));
 
-    let figment = rocket.figment();
-    let config: Config = figment.extract().expect("config");
+    rocket
+        .manage(mixer_state)
+        .manage(db_pool) // TODO: move out to NoteStorage?
+        // legacy api
+        .mount(
+            "/",
+            rocket::routes![
+                api::mix_post_handler, // Mounting /mix
+            ],
+        )
+        // new api
+        .mount(
+            "/api/v1/",
+            rocket::routes![
+                api::mix_post_handler,
+                api::note_drafts::post_new_handler,
+                api::note_drafts::get_handler,
+                api::note_drafts::get_by_id_handler,
+                api::note_drafts::post_activate_by_id_handler,
+                api::note_drafts::delete_by_id_handler,
+            ],
+        )
+}
+
+#[rocket::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
+
+    logging::init();
+    info!("Starting {PACKAGE}, version {VERSION}");
+
+    let config = rocket::Config::figment()
+        .extract::<Config>()
+        .context("reading figment provided config")?;
 
     let db_url = &config.db().url;
     // TODO: deadpool + Arc
@@ -53,9 +81,7 @@ async fn main() -> anyhow::Result<()> {
     let mixer_state = MixerState::new(sender);
 
     // main event loop for API launched by rocket
-    mixer_operator::rocket(mixer_state, db_pool)
-        .launch()
-        .await?;
+    rocket(mixer_state, db_pool).launch().await?;
 
     Ok(())
 }
