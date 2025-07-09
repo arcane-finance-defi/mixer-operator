@@ -1,34 +1,44 @@
+use rand::{Rng, rng};
 use std::path::PathBuf;
-use miden_client::{Client, ClientError};
-use miden_client::store::sqlite_store::SqliteStore;
-use thiserror::Error;
 use std::sync::Arc;
-use glob::glob;
-use miden_bridge::accounts::token_wrapper::bridge_note_tag;
-use miden_client::rpc::{Endpoint, TonicRpcClient};
-use miden_client::store::Store;
-use miden_client::transaction::{TransactionRequestBuilder, TransactionRequestError};
-use miden_objects::account::{AccountFile, AccountId};
-use miden_objects::crypto::rand::RpoRandomCoin;
-use miden_objects::{AccountIdError, Felt, NoteError, Word, ZERO};
-use miden_objects::note::{Note, NoteAssets, NoteExecutionHint, NoteFile, NoteInputs, NoteMetadata, NoteRecipient, NoteType};
-use rand::{rng, Rng};
-use miden_bridge::notes::bridge::{croschain, bridge};
-use miden_objects::asset::Asset;
-use miden_objects::transaction::OutputNote;
-use miden_objects::utils::{Deserializable, DeserializationError};
+use thiserror::Error;
 use tokio::fs::read;
+use tracing::info;
+
+use glob::glob;
+use miden_bridge::{
+    accounts::token_wrapper::bridge_note_tag,
+    notes::bridge::{bridge, croschain},
+};
+use miden_client::{
+    Client as MidenClient, ClientError as MidenClientError,
+    rpc::{Endpoint, TonicRpcClient},
+    store::{Store, sqlite_store::SqliteStore},
+    transaction::{TransactionRequestBuilder, TransactionRequestError},
+};
+use miden_objects::{
+    AccountIdError, Felt, NoteError, Word, ZERO,
+    account::{AccountFile, AccountId},
+    asset::Asset,
+    crypto::rand::RpoRandomCoin,
+    note::{
+        Note, NoteAssets, NoteExecutionHint, NoteFile, NoteInputs, NoteMetadata, NoteRecipient,
+        NoteType,
+    },
+    transaction::OutputNote,
+    utils::{Deserializable, DeserializationError},
+};
 
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
 pub struct MixerClient {
-    client: Client
+    client: MidenClient,
 }
 
 #[derive(Error, Debug)]
 pub enum MixerClientError {
     #[error(transparent)]
-    InternalClientError(#[from] ClientError),
+    InternalClientError(#[from] MidenClientError),
     #[error("Endpoint string parse error: {0}")]
     MalformedEndpointUrlError(String),
     #[error("Invalid note type")]
@@ -53,11 +63,15 @@ impl MixerClient {
     pub async fn new(
         rpc_endpoint: &str,
         rpc_timeout_ms: u64,
-        store_filename: Option<PathBuf>
+        store_filename: Option<PathBuf>,
     ) -> Result<Self, MixerClientError> {
         let store = SqliteStore::new(
-            store_filename.or(Some(PathBuf::from(DEFAULT_STORAGE_FILE.to_string()))).unwrap()
-        ).await.map_err(ClientError::StoreError)?;
+            store_filename
+                .or(Some(PathBuf::from(DEFAULT_STORAGE_FILE.to_string())))
+                .unwrap(),
+        )
+        .await
+        .map_err(MidenClientError::StoreError)?;
 
         let store = Arc::new(store);
 
@@ -66,11 +80,11 @@ impl MixerClient {
 
         let rng = RpoRandomCoin::new(coin_seed.map(Felt::new));
 
-        let client = Client::new(
+        let client = MidenClient::new(
             Arc::new(TonicRpcClient::new(
                 &Endpoint::try_from(rpc_endpoint)
                     .map_err(MixerClientError::MalformedEndpointUrlError)?,
-                rpc_timeout_ms
+                rpc_timeout_ms,
             )),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
@@ -78,12 +92,10 @@ impl MixerClient {
             false,
             "".to_string(),
             None,
-            None
+            None,
         );
 
-        Ok(Self {
-            client
-        })
+        Ok(Self { client })
     }
 
     pub async fn initialize(
@@ -100,15 +112,25 @@ impl MixerClient {
 
         info!("Mixer state synced");
 
-        for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
+        for path in glob(supported_accounts_dir.as_str())
+            .unwrap()
+            .filter_map(Result::ok)
+        {
             let account_bytes = read(path).await?;
             let account_file = AccountFile::read_from_bytes(account_bytes.as_slice())?;
             let account_id = account_file.account.id();
             let account_id_hex = account_id.to_hex();
             info!("Importing the private account with id {account_id_hex}");
 
-            if self.client.try_get_account_header(account_id).await.is_err() {
-                self.client.add_account(&account_file.account, None, false).await?;
+            if self
+                .client
+                .try_get_account_header(account_id)
+                .await
+                .is_err()
+            {
+                self.client
+                    .add_account(&account_file.account, None, false)
+                    .await?;
             }
             info!("Private account imported")
         }
@@ -117,7 +139,12 @@ impl MixerClient {
             info!("Importing the public account with id {public_account_id}");
             let public_account_id = AccountId::from_hex(public_account_id.as_str())?;
 
-            if self.client.try_get_account_header(public_account_id).await.is_err() {
+            if self
+                .client
+                .try_get_account_header(public_account_id)
+                .await
+                .is_err()
+            {
                 self.client.import_account_by_id(public_account_id).await?;
             }
             info!("Public account imported")
@@ -132,10 +159,14 @@ impl MixerClient {
         Ok(())
     }
 
-    pub async fn mix(&mut self, note_file: NoteFile, account_id: AccountId) -> Result<String, MixerClientError> {
+    pub async fn mix(
+        &mut self,
+        note_file: NoteFile,
+        account_id: AccountId,
+    ) -> Result<String, MixerClientError> {
         let note = match note_file {
             NoteFile::NoteWithProof(ref note, _) => Ok(note),
-            _ => Err(MixerClientError::InvalidNoteTypeError())
+            _ => Err(MixerClientError::InvalidNoteTypeError()),
         }?;
 
         if note.recipient().script().root() == croschain().root() {
@@ -144,41 +175,55 @@ impl MixerClient {
             Err(MixerClientError::WrongNoteScriptRootError())
         }?;
 
-        let expected_bridge_note= get_public_bridge_output_note(note)?;
+        // reconstruct expected note from the bridge
+        let expected_bridge_note = get_public_bridge_output_note(note)?;
 
+        // sync state with blockchain
         self.client.sync_state().await?;
 
-        let proof = self.client.get_note_inclusion_proof(note.id()).await?
+        // obtain a cryptographic proof that note exists within the blockchain's state
+        let proof = self
+            .client
+            .get_note_inclusion_proof(note.id())
+            .await?
             .ok_or(MixerClientError::InvalidNoteTypeError())?;
 
-        let note_file = NoteFile::NoteWithProof(
-            note.clone(),
-            proof,
-        );
+        let note_file = NoteFile::NoteWithProof(note.clone(), proof);
 
         let note_id = self.client.import_note(note_file).await?;
 
+        // obtain account to consume to
         let account = self.client.try_get_account(account_id.clone()).await;
 
-        if let Err(ClientError::AccountDataNotFound(_)) = account {
-            Err(MixerClientError::NotManageableAccountError(account_id.clone().to_hex()))
+        // TODO: errors cast
+        if let Err(MidenClientError::AccountDataNotFound(_)) = account {
+            Err(MixerClientError::NotManageableAccountError(
+                account_id.clone().to_hex(),
+            ))
         } else {
             Ok(())
         }?;
 
+        // sync state
         self.client.sync_state().await?;
 
-        let tx = self.client.new_transaction(
-            account_id,
-            TransactionRequestBuilder::new()
-                .with_own_output_notes(vec![expected_bridge_note])
-                .with_empty_script(true)
-                .build_consume_notes(vec![note_id])?
-        ).await?;
+        let tx = self
+            .client
+            .new_transaction(
+                account_id,
+                TransactionRequestBuilder::new()
+                    .with_own_output_notes(vec![expected_bridge_note])
+                    .with_empty_script(true)
+                    .build_consume_notes(vec![note_id])?,
+            )
+            .await?;
+        info!("Built transaction");
 
         let tx_id = tx.executed_transaction().id();
 
         self.client.submit_transaction(tx).await?;
+        info!("Submit transaction");
+
         self.cleanup().await?;
 
         Ok(tx_id.to_hex())
@@ -187,7 +232,7 @@ impl MixerClient {
 
 #[derive(Error, Debug)]
 pub enum PublicNoteConstructorError {
-    #[error("Fungible asset in the crosschain note note found")]
+    #[error("Fungible asset in the crosschain note is not found")]
     FungibleAssetNotFound(),
     #[error(transparent)]
     NoteCreationError(#[from] NoteError),
@@ -195,13 +240,20 @@ pub enum PublicNoteConstructorError {
     MalformedSerialNumber(),
 }
 
-fn get_public_bridge_output_note(input_note: &Note) -> Result<OutputNote, PublicNoteConstructorError> {
-    let crosschain_asset = input_note.assets().iter().last()
+fn get_public_bridge_output_note(
+    input_note: &Note,
+) -> Result<OutputNote, PublicNoteConstructorError> {
+    let crosschain_asset = input_note
+        .assets()
+        .iter()
+        .last()
         .ok_or(PublicNoteConstructorError::FungibleAssetNotFound())?;
+
     let crosschain_asset = match crosschain_asset {
         Asset::Fungible(asset) => Ok(asset),
-        _ => Err(PublicNoteConstructorError::FungibleAssetNotFound())
+        _ => Err(PublicNoteConstructorError::FungibleAssetNotFound()),
     }?;
+
     let script = bridge();
     let assets = NoteAssets::default();
     let metadata = NoteMetadata::new(
@@ -209,7 +261,7 @@ fn get_public_bridge_output_note(input_note: &Note) -> Result<OutputNote, Public
         NoteType::Public,
         bridge_note_tag(),
         NoteExecutionHint::Always,
-        ZERO
+        ZERO,
     )?;
 
     let serial_num = Word::try_from(input_note.inputs().values()[..4].to_vec())
@@ -218,19 +270,12 @@ fn get_public_bridge_output_note(input_note: &Note) -> Result<OutputNote, Public
     let inputs = NoteInputs::new(
         vec![
             Word::from(Asset::Fungible(crosschain_asset.clone())).to_vec(),
-            input_note.inputs().values()[4..].to_vec()
-        ].concat()
+            input_note.inputs().values()[4..].to_vec(),
+        ]
+        .concat(),
     )?;
 
-    let recipient = NoteRecipient::new(
-        serial_num,
-        script,
-        inputs
-    );
+    let recipient = NoteRecipient::new(serial_num, script, inputs);
 
-    Ok(OutputNote::Full(Note::new(
-        assets,
-        metadata,
-        recipient
-    )))
+    Ok(OutputNote::Full(Note::new(assets, metadata, recipient)))
 }
