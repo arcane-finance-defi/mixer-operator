@@ -200,37 +200,73 @@ impl MixerClient {
     }
 
     async fn mix_internal(&mut self, note_file_bytes: &[u8], account_id_hex: &str) -> Result<String, MixerClientError> {
-        let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
         let note_file = NoteFile::read_from_bytes(note_file_bytes)?;
         let note = match note_file {
             NoteFile::NoteWithProof(n, _) => n,
             _ => return Err(MixerClientError::InvalidNoteTypeError()),
         };
+
         if note.recipient().script().root() != croschain().root() {
             return Err(MixerClientError::WrongNoteScriptRootError());
         }
+
         let expected = get_public_bridge_output_note(&note)?;
 
-        client.sync_state().await?;
-        let proof = client.get_note_inclusion_proof(note.id()).await?.ok_or(MixerClientError::InvalidNoteTypeError())?;
-        let nf = NoteFile::NoteWithProof(note.clone(), proof);
-        let note_id = client.import_note(nf).await?;
-        let account_id = AccountId::from_hex(account_id_hex)?;
-        if let Err(ClientError::AccountDataNotFound(_)) = client.try_get_account(account_id).await {
-            return Err(MixerClientError::NotManageableAccountError(account_id_hex.to_string()));
+        // Сначала отдельно sync
+        {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            client.sync_state().await?;
         }
-        client.sync_state().await?;
-        let tx = client.new_transaction(
-            account_id,
-            TransactionRequestBuilder::new()
-                .with_own_output_notes(vec![expected])
-                .with_empty_script(true)
-                .build_consume_notes(vec![note_id])?
-        ).await?;
-        let tx_id = tx.executed_transaction().id();
-        client.submit_transaction(tx).await?;
-        Ok(tx_id.to_hex())
+
+        let proof = {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            client.get_note_inclusion_proof(note.id()).await?
+        }.ok_or(MixerClientError::InvalidNoteTypeError())?;
+
+        let nf = NoteFile::NoteWithProof(note.clone(), proof);
+
+
+        console::log_1(&format!("NoteType: {:?}", note.metadata().note_type()).into());
+
+        let note_id = {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            client.import_note(nf).await?
+        };
+
+        let account_id = AccountId::from_hex(account_id_hex)?;
+
+        {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            if let Err(ClientError::AccountDataNotFound(_)) = client.try_get_account(account_id).await {
+                return Err(MixerClientError::NotManageableAccountError(account_id_hex.to_string()));
+            }
+        }
+
+        {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            client.sync_state().await?;
+        }
+        console::log_1(&format!("Imported note ID: {:?}", note_id).into());
+
+        let tx = {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            client.new_transaction(
+                account_id,
+                TransactionRequestBuilder::new()
+                    .with_own_output_notes(vec![expected])
+                    .with_empty_script(true)
+                    .build_consume_notes(vec![note_id])?
+            ).await?
+        };
+
+        {
+            let client = self.client.as_mut().ok_or_else(|| MixerClientError::JsError("Client not initialized".into()))?;
+            client.submit_transaction(tx.clone()).await?;
+        }
+
+        Ok(tx.executed_transaction().id().to_hex())
     }
+
 
     async fn create_wasm_store(&self) -> Result<impl Store, MixerClientError> {
         let name = self.storage_name.clone();
@@ -317,6 +353,43 @@ fn get_public_bridge_output_note(input_note: &Note) -> Result<OutputNote, Public
         recipient
     )))
 }
+
+#[wasm_bindgen]
+pub async fn simple_mix(
+    note_file_bytes: &[u8],
+    account_id_hex: &str,
+    rpc_url: &str,
+    rpc_timeout_ms: u64,
+) -> Result<String, JsValue> {
+    let mut mixer = MixerClient::new();
+
+    mixer
+        .initialize_client(rpc_url, rpc_timeout_ms)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    let account_id_hex = "0xf12903e6b9d03b2000013b8382c73e";
+    let mut public_accounts = Array::new();
+    public_accounts.push(&JsValue::from_str(account_id_hex));
+
+    mixer
+        .initialize_accounts(Array::new(), public_accounts) // передай нужные аккаунты
+        .await
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    mixer
+        .sync_state()
+        .await
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    let result = mixer
+        .mix(note_file_bytes, account_id_hex)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("{:?}", e)))?;
+
+    Ok(result)
+}
+
 
 // Экспорт функции для установки panic hook
 /*#[wasm_bindgen(start)]
