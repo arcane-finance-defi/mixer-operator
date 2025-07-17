@@ -1,4 +1,4 @@
-use deadpool_diesel::sqlite::{Runtime, Manager, Pool};
+use deadpool_diesel::sqlite::{Manager, Pool, Runtime};
 use diesel::SqliteConnection;
 
 pub mod models;
@@ -17,3 +17,13 @@ pub fn connect_pool(database_url: &str) -> anyhow::Result<Pool> {
     Ok(pool)
 }
 
+// concrete type behind database provider which implements repository traits
+pub struct DatabaseStorage {
+    pool: DbPool,
+}
+
+impl DatabaseStorage {
+    pub fn new(pool: DbPool) -> Self {
+        DatabaseStorage { pool }
+    }
+}

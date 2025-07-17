@@ -1,36 +1,48 @@
-use std::process::ExitCode;
+use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Context as _;
-use dotenv::dotenv;
-use rocket::{http::Method, Build, Rocket};
+use futures::{StreamExt as _, stream::FuturesUnordered};
+use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use mixer_operator::{
-    api, config::Config, db, executor, logging, mixer::{event_loop, MixClientRequest}, state::MixerState, PACKAGE, VERSION
+    PACKAGE, VERSION, api,
+    config::Config,
+    db, executor, logging,
+    mixer::{MixClientRequest, event_loop},
+    state::MixerState,
 };
 
-fn rocket(mixer_state: MixerState, note_repo: impl db::NoteRepository) -> Rocket<Build> {
+fn rocket(mixer_state: MixerState, note_repo: Arc<dyn db::models::NoteRepository>) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
         .send_wildcard(true)
         .allowed_methods(
-            vec![Method::Get, Method::Post, Method::Patch, Method::Put, Method::Delete, Method::Options]
-                .into_iter()
-                .map(From::from)
-                .collect(),
+            vec![
+                Method::Get,
+                Method::Post,
+                Method::Patch,
+                Method::Put,
+                Method::Delete,
+                Method::Options,
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
         )
         .allowed_headers(AllowedHeaders::all())
         .to_cors()
         .expect("CORS build error");
 
-    let rocket: rocket::Rocket<rocket::Build> =
-        rocket::build().attach(cors);
+    let rocket: rocket::Rocket<rocket::Build> = rocket::build().attach(cors);
 
     rocket
+        // share state
         .manage(mixer_state)
-        .manage(db_pool) // TODO: move out to NoteStorage?
+        .manage(note_repo)
         // legacy api
         .mount(
             "/",
@@ -44,10 +56,10 @@ fn rocket(mixer_state: MixerState, note_repo: impl db::NoteRepository) -> Rocket
             rocket::routes![
                 api::mix_post_handler,
                 api::note_drafts::post_new_handler,
-                api::note_drafts::get_handler,
-                api::note_drafts::get_by_id_handler,
-                api::note_drafts::post_activate_by_id_handler,
-                api::note_drafts::delete_by_id_handler,
+                api::note_drafts::get_status_handler,
+                // api::note_drafts::get_by_id_handler,
+                // api::note_drafts::post_activate_by_id_handler,
+                // api::note_drafts::delete_by_id_handler,
             ],
         )
 }
@@ -55,7 +67,7 @@ fn rocket(mixer_state: MixerState, note_repo: impl db::NoteRepository) -> Rocket
 #[rocket::main]
 async fn main() -> anyhow::Result<ExitCode> {
     setup_panic_hook();
-    dotenvy::dotenvy().ok();
+    dotenvy::dotenv().ok();
 
     logging::init();
     info!("Starting {PACKAGE}, version {VERSION}");
@@ -69,51 +81,59 @@ async fn main() -> anyhow::Result<ExitCode> {
     let mut handles = FuturesUnordered::new();
 
     let db_url = &config.db().url;
-    let db_pool = db::connect(&db_url)?;
+    let db_pool = db::connect_pool(&db_url)?;
 
     let (sender, receiver) = mpsc::channel::<MixClientRequest>(100);
 
     // Event loop in separete async runtime for Miden client (not Send'able)
+    let mixer_token = cancellation_token.clone();
     let mixer_worker = std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("async runtime");
 
-        event_loop(config, receiver, runtime, cancellation_token.clone());
+        event_loop(config, receiver, runtime, mixer_token);
     });
 
     // Note executor task
-    handles.push(executor::spawn(sender.clone(), cancellation_token.clone()));
-
-    let mixer_state = MixerState::new(sender);
+    handles.push(executor::spawn(
+        sender.clone(),
+        db::DatabaseStorage::new(db_pool.clone()),
+        cancellation_token.clone(),
+    ));
 
     // Main event loop for API launched by rocket
-    rocket(mixer_state, db_pool).launch().await?;
+    rocket(
+        MixerState::new(sender),
+        Arc::new(db::DatabaseStorage::new(db_pool.clone())),
+    )
+    .launch()
+    .await?;
 
     // At this point the server shut down (launch result is Ok)
     // So do graceful shutdown of other features
-    logging::info("Shutting down {PACKAGE}");
+    tracing::info!("Shutting down {PACKAGE}");
     cancellation_token.cancel();
 
     let mut exit_code = ExitCode::SUCCESS;
     while let Some((name, result)) = handles.next().await {
         if let Err(error) = result.with_context(|| format!("running {name}")) {
             exit_code = ExitCode::FAILURE;
-            log::error!("Fatal error: {error:#}. Stopping");
+            tracing::error!("Fatal error: {error:#}. Stopping");
         }
     }
 
-    mixer_worker.join()?;
+    mixer_worker.join().expect("mixer thread finished");
 
-    Ok(())
+    Ok(exit_code)
 }
 
 fn setup_panic_hook() {
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_panic(info);
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(100));
         std::process::exit(1);
     }));
 }

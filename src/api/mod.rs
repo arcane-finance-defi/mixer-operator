@@ -5,13 +5,13 @@ use miden_client::Felt;
 use miden_objects::account::AccountId;
 use miden_objects::note::{Note, NoteTag};
 use miden_objects::utils::parse_hex_string_as_word;
-use tokio::sync::oneshot;
-use tracing;
 use rocket::{
     Responder, State as RocketState, post,
     serde::{Deserialize, Serialize, json::Json},
 };
-use tracing::info;
+use tokio::sync::oneshot;
+use tracing;
+
 use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::state::MixerState;
@@ -27,7 +27,9 @@ pub async fn mix_post_handler(
     data: Json<MixRequest>,
     state: &RocketState<MixerState>,
 ) -> Result<Json<MixResponse>, ErrorResponse> {
-    let note = Note::try_from(&data.0).map_err(|err| ErrorResponse {
+    let data = data.into_inner();
+
+    let note = Note::try_from(&data).map_err(|err| ErrorResponse {
         error: err.to_string(),
     })?;
 
@@ -83,7 +85,7 @@ impl TryFrom<&MixRequest> for Note {
             faucet_id,
             value.amount,
             faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?
+            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
         )?;
 
         Ok(note)
@@ -139,9 +141,6 @@ mod test {
 
         let serialized_request = json::to_string(&req).expect("Serialized MixRequest");
 
-        assert_eq!(
-            serialized_request,
-            expected_request
-        );
+        assert_eq!(serialized_request, expected_request);
     }
 }

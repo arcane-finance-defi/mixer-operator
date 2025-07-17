@@ -1,12 +1,12 @@
-use crate::mixer::MixerClentSender;
+use crate::mixer::MixerClientSender;
 
 #[derive(Debug)]
 pub struct MixerState {
-    pub client: MixerClentSender,
+    pub client: MixerClientSender,
 }
 
 impl MixerState {
-    pub fn new(client: MixerClentSender) -> Self {
+    pub fn new(client: MixerClientSender) -> Self {
         MixerState { client }
     }
 }

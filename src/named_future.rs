@@ -1,4 +1,4 @@
-use futures::{future::BoxFuture, Future, FutureExt};
+use futures::{Future, FutureExt, future::BoxFuture};
 use tracing::Instrument;
 
 pub type NamedJoinHandle = BoxFuture<'static, (String, anyhow::Result<()>)>;

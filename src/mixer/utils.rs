@@ -1,8 +1,8 @@
 use anyhow::Context;
 use miden_client::utils::Serializable;
+use miden_objects::Word;
 use miden_objects::note::{NoteFile, NoteId};
 use miden_objects::utils::{Deserializable, ToHex};
-use miden_objects::Word;
 
 pub fn extract_note_id(note_file: &NoteFile) -> NoteId {
     match note_file {

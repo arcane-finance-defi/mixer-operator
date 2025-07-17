@@ -12,8 +12,8 @@ use crate::mixer::client::{MixerClient, MixerClientError};
 pub mod client;
 pub mod utils;
 
-pub type MixerClentSender = mpsc::Sender<MixClientRequest>;
-pub type MixerClentReceiver = mpsc::Receiver<MixClientRequest>;
+pub type MixerClientSender = mpsc::Sender<MixClientRequest>;
+pub type MixerClientReceiver = mpsc::Receiver<MixClientRequest>;
 
 type MixerClientResponse<T> = oneshot::Sender<Result<T, MixerClientError>>;
 
@@ -26,12 +26,12 @@ pub enum MixClientRequest {
     Poll {
         note_id: NoteId,
         response_sink: MixerClientResponse<bool>,
-    }
+    },
 }
 
 pub fn event_loop(
     config: Config,
-    mut receiver: MixerClentReceiver,
+    mut receiver: MixerClientReceiver,
     runtime: Runtime,
     cancellation_token: CancellationToken,
 ) {
@@ -66,7 +66,7 @@ pub fn event_loop(
                 tracing::info!("MixerClient::Mix {result:#?}");
                 response_sink.send(result).unwrap();
             }
-            MixClientRequest::Poll { 
+            MixClientRequest::Poll {
                 note_id,
                 response_sink,
             } => {

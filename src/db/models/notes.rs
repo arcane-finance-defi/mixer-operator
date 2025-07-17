@@ -1,11 +1,8 @@
 use crate::db::schema;
 use chrono::NaiveDateTime;
 use diesel::{
-    prelude::*,
-    backend::Backend,
-    deserialize, serialize,
+    AsExpression, FromSqlRow, backend::Backend, deserialize, prelude::*, serialize,
     sql_types::Integer,
-    AsExpression, FromSqlRow,
 };
 
 #[derive(Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
@@ -51,13 +48,16 @@ where
     }
 }
 
-// SQLite specific implementation due to 'b lifetime specific with temporary values 
+// SQLite specific implementation due to 'b lifetime specific with temporary values
 // Refer to ToSql docs
 impl serialize::ToSql<Integer, diesel::sqlite::Sqlite> for NoteStatus
 where
     i32: serialize::ToSql<Integer, diesel::sqlite::Sqlite>,
 {
-    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, diesel::sqlite::Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut serialize::Output<'b, '_, diesel::sqlite::Sqlite>,
+    ) -> serialize::Result {
         out.set_value(self.bits() as i32);
         Ok(serialize::IsNull::No)
     }

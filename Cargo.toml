@@ -39,6 +39,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 futures = "0.3.31"
 deadpool-diesel = { version = "0.6.1", features = ["sqlite", "tracing"] }
 bitflags = "2.9.1"
+async-trait = "0.1.88"
 
 [dev-dependencies]
 dotenvy = "0.15.7"

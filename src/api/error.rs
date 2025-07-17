@@ -9,21 +9,27 @@ use tokio::sync::{mpsc, oneshot};
 #[derive(Error, Debug)]
 pub(super) enum EndpointError {
     #[error(transparent)]
-    HexError(#[from] FromHexError),
+    FromHex(#[from] FromHexError),
     #[error(transparent)]
-    DeserializationError(#[from] DeserializationError),
+    Deserialization(#[from] DeserializationError),
     #[error(transparent)]
-    AccountIdError(#[from] AccountIdError),
+    AccountId(#[from] AccountIdError),
     #[error(transparent)]
-    SendError(#[from] Box<mpsc::error::SendError<MixClientRequest>>),
+    MpscSend(#[from] Box<mpsc::error::SendError<MixClientRequest>>),
     #[error(transparent)]
-    RecvError(#[from] oneshot::error::RecvError),
+    OneshotRecv(#[from] oneshot::error::RecvError),
     #[error(transparent)]
-    MixerClientError(#[from] Box<MixerClientError>),
-    #[error("{0}")]
-    DatabaseLogicError(String),
-    #[error(transparent)]
-    DatabaseError(#[from] diesel::result::Error),
-    #[error(transparent)]
-    DatabasePoolError(#[from] diesel::r2d2::PoolError),
+    MixerClient(#[from] Box<MixerClientError>),
+    #[error("unknown source error")]
+    Unknown { source: anyhow::Error },
+}
+
+// TODO (kochetkov): I believe we should use `snafu` crate or smth for this purpose
+impl From<anyhow::Error> for EndpointError {
+    fn from(e: anyhow::Error) -> Self {
+        match e.downcast::<EndpointError>() {
+            Ok(inner) => EndpointError::from(inner),
+            Err(other) => EndpointError::Unknown { source: other },
+        }
+    }
 }
