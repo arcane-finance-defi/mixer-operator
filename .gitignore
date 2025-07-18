@@ -1,8 +1,45 @@
+# === Rust / Cargo ===
 /target
+**/*.rs.bk
+Cargo.lock
+
+# === Environment files ===
 .env
+.env.*
+!.env.example
 
-# sqlite
-*.db
-
-# Diesel CLI
+# === Diesel & SQLite ===
 diesel.toml
+*.db
+*.sqlite
+*.sqlite3
+migrations/*/down.sql
+migrations/*/up.sql
+
+# === IDE / Editor ===
+.idea/
+.vscode/
+*.iml
+
+# === Logs & Temp ===
+*.log
+*.tmp
+*.swp
+*~
+miden-client.toml
+
+# === Tests ===
+tests/output/
+tests/tmp/
+*.test.log
+*.test.out
+
+# === Rocket config ===
+Rocket.toml
+
+# === Misc ===
+.DS_Store
+Thumbs.db
+
+# === Generated Miden templates ===
+templates/
