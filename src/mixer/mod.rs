@@ -40,7 +40,7 @@ pub fn event_loop(
             config.rpc_url().as_str(),
             config.rpc_timeout_ms(),
             None,
-            config.debug()
+            config.debug(),
         ))
         .unwrap();
 
@@ -49,30 +49,36 @@ pub fn event_loop(
         .unwrap();
 
     loop {
-        // temp for GS
         if cancellation_token.is_cancelled() && receiver.is_empty() {
+            tracing::warn!("Cancellation token trigger");
             break;
         }
 
-        let request = runtime.block_on(receiver.recv()).unwrap();
+        let request = runtime.block_on(receiver.recv());
 
         match request {
-            MixClientRequest::Mix {
+            Some(MixClientRequest::Mix {
                 note,
                 account_id,
                 response_sink,
-            } => {
+            }) => {
                 let result = runtime.block_on(client.mix(note, account_id));
                 tracing::info!("MixerClient::Mix {result:#?}");
                 response_sink.send(result).unwrap();
             }
-            MixClientRequest::Poll {
+
+            Some(MixClientRequest::Poll {
                 note_id,
                 response_sink,
-            } => {
+            }) => {
                 let result = runtime.block_on(client.is_note_onchain(note_id));
                 tracing::info!("MixerClient::Poll {result:#?}");
                 response_sink.send(result).unwrap();
+            }
+
+            None => {
+                tracing::warn!("Channel closed");
+                break;
             }
         }
     }

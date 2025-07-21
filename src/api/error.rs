@@ -28,7 +28,7 @@ pub(super) enum EndpointError {
 impl From<anyhow::Error> for EndpointError {
     fn from(e: anyhow::Error) -> Self {
         match e.downcast::<EndpointError>() {
-            Ok(inner) => EndpointError::from(inner),
+            Ok(inner) => inner,
             Err(other) => EndpointError::Unknown { source: other },
         }
     }

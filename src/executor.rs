@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::db::models::NoteRepository;
 use crate::db::models::notes::{FullNote, NoteStatus};
+use crate::mixer::MixClientRequest;
 use crate::mixer::client::MixerClientError;
-use crate::mixer::{MixClientRequest, utils as mixer_utils};
 use crate::{mixer::MixerClientSender, named_future::NamedJoinHandle};
 
 struct NoteExecutor {
@@ -51,7 +51,7 @@ impl NoteExecutor {
                 result = self.execute() => {
                     if let Err(e) = result {
                         tracing::error!("NoteExecutor general error: {e:#}");
-                        // metrics_push(MetricsResult::Error);
+                        // metrics_push(NoteExecutor::Error); // TODO: could be prometheus, etc.
                     }
                 }
             }
@@ -66,7 +66,7 @@ impl NoteExecutor {
         let pending_notes = self.poll_for_ready_notes().await?;
 
         if pending_notes.is_empty() {
-            tracing::info!("No work for now");
+            tracing::debug!("No work for now");
             tokio::task::yield_now().await;
             return Ok(());
         }
@@ -136,7 +136,7 @@ impl NoteExecutor {
     }
 }
 
-#[tracing::instrument(skip(client))]
+#[tracing::instrument(skip(client, note))]
 async fn mix(
     client: MixerClientSender,
     note: Note,

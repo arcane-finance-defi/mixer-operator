@@ -42,6 +42,10 @@ impl Config {
             .collect()
     }
 
+    pub fn debug(&self) -> bool {
+        self.debug.unwrap_or(false)
+    }
+
     pub fn db(&self) -> &Database {
         &self.db
     }

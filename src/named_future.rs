@@ -3,7 +3,7 @@ use tracing::Instrument;
 
 pub type NamedJoinHandle = BoxFuture<'static, (String, anyhow::Result<()>)>;
 
-#[tracing::instrument(skip(fut))]
+// #[tracing::instrument(skip(fut))] // TODO
 pub fn spawn_named<F>(name: String, fut: F) -> NamedJoinHandle
 where
     F: Future<Output = anyhow::Result<()>> + Send + 'static,

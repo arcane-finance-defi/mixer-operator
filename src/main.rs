@@ -16,7 +16,10 @@ use mixer_operator::{
     state::MixerState,
 };
 
-fn rocket(mixer_state: MixerState, note_repo: Arc<dyn db::models::NoteRepository>) -> Rocket<Build> {
+fn rocket(
+    mixer_state: MixerState,
+    note_repo: Arc<dyn db::models::NoteRepository>,
+) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
         .send_wildcard(true)
@@ -83,7 +86,7 @@ async fn main() -> anyhow::Result<ExitCode> {
     let db_url = &config.db().url;
     let db_pool = db::connect_pool(&db_url)?;
 
-    let (sender, receiver) = mpsc::channel::<MixClientRequest>(100);
+    let (sender, receiver) = mpsc::channel::<MixClientRequest>(config.client_count() as usize);
 
     // Event loop in separete async runtime for Miden client (not Send'able)
     let mixer_token = cancellation_token.clone();

@@ -11,13 +11,13 @@ use miden_bridge::{
     notes::bridge::{bridge, croschain},
 };
 use miden_client::{
-    Client as MidenClient, ClientError as MidenClientError,
+    Client as MidenClient, ClientError as MidenClientError, ExecutionOptions,
     rpc::{Endpoint, TonicRpcClient},
     store::{Store, sqlite_store::SqliteStore},
     transaction::{TransactionRequestBuilder, TransactionRequestError},
 };
 use miden_objects::{
-    AccountIdError, Felt, NoteError, Word, ZERO,
+    AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, NoteError, Word, ZERO,
     account::{AccountFile, AccountId},
     asset::Asset,
     crypto::rand::RpoRandomCoin,
@@ -92,8 +92,9 @@ impl MixerClient {
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
                 debug,
-                debug
-            ).unwrap(),
+                debug,
+            )
+            .unwrap(),
             None,
             None,
             "".to_string(),
@@ -163,6 +164,7 @@ impl MixerClient {
         Ok(())
     }
 
+    // #[tracing::instrument(skip_all)]
     pub async fn mix(
         &mut self,
         note: Note,
@@ -206,12 +208,16 @@ impl MixerClient {
         // sync state
         self.client.sync_state().await?;
 
-        let tx_req = TransactionRequestBuilder::new()
-            .with_own_output_notes(vec![expected_bridge_note])
-            .with_empty_script(true)
-            .build_consume_notes(vec![note_id])?;
-
-        let tx = self.client.new_transaction(account_id, tx_req).await?;
+        let tx = self
+            .client
+            .new_transaction(
+                account_id,
+                TransactionRequestBuilder::new()
+                    .own_output_notes(vec![expected_bridge_note])
+                    .with_empty_script(true)
+                    .build_consume_notes(vec![note_id])?,
+            )
+            .await?;
         info!("Built transaction");
 
         let tx_id = tx.executed_transaction().id();

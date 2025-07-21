@@ -132,12 +132,6 @@ impl TryFrom<MixRequest> for crate::db::models::notes::FullNote {
             error: err.to_string(),
         })?;
 
-        // let note_file = NoteFile::NoteDetails {
-        //     details: note.clone().into(),
-        //     tag: Some(note.metadata().tag()),
-        //     after_block_num: BlockNumber::from(0), // TODO: should poll blockchain
-        // };
-
         let serialized_note = note.to_bytes().to_hex();
         let serialized_note_id = note.id().to_string();
 
