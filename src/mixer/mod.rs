@@ -29,6 +29,7 @@ pub fn event_loop(
             config.rpc_url().as_str(),
             config.rpc_timeout_ms(),
             None,
+            config.debug()
         ))
         .unwrap();
 

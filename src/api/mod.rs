@@ -11,7 +11,7 @@ use rocket::{
     Responder, State as RocketState, post,
     serde::{Deserialize, Serialize, json::Json},
 };
-
+use tracing::info;
 use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::mixer::utils::word_from_hex;
@@ -31,6 +31,8 @@ pub async fn mix_post_handler(
     let note = Note::try_from(&data.0).map_err(|err| ErrorResponse {
         error: err.to_string(),
     })?;
+
+    info!("Mixing note: {:?}", &note.id());
 
     let account_id = AccountId::from_hex(&data.account_id).map_err(EndpointError::from)?;
 

@@ -51,6 +51,7 @@ impl MixerClient {
         rpc_endpoint: &str,
         rpc_timeout_ms: u64,
         store_filename: Option<PathBuf>,
+        debug: bool
     ) -> Result<Self, MixerClientError> {
         let store = SqliteStore::new(
             store_filename
@@ -79,8 +80,8 @@ impl MixerClient {
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
-                false,
-                false
+                debug,
+                debug
             ).unwrap(),
             None,
             None,

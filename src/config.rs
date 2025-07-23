@@ -11,6 +11,7 @@ pub struct Config {
     client_count: u32,
     private_account_dir: Option<PathBuf>,
     public_account_ids: String,
+    debug: Option<bool>,
     db: Database,
 }
 
@@ -44,6 +45,10 @@ impl Config {
 
     pub fn db(&self) -> &Database {
         &self.db
+    }
+
+    pub fn debug(&self) -> bool {
+        self.debug.unwrap_or(false)
     }
 }
 
