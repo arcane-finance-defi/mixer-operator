@@ -10,24 +10,11 @@ use miden_bridge::{
     accounts::token_wrapper::bridge_note_tag,
     notes::bridge::{bridge, croschain},
 };
-use miden_client::{
-    Client as MidenClient, ClientError as MidenClientError,
-    rpc::{Endpoint, TonicRpcClient},
-    store::{Store, sqlite_store::SqliteStore},
-    transaction::{TransactionRequestBuilder, TransactionRequestError},
-};
-use miden_objects::{
-    AccountIdError, Felt, NoteError, Word, ZERO,
-    account::{AccountFile, AccountId},
-    asset::Asset,
-    crypto::rand::RpoRandomCoin,
-    note::{
-        Note, NoteAssets, NoteExecutionHint, NoteFile, NoteInputs, NoteMetadata, NoteRecipient,
-        NoteType,
-    },
-    transaction::OutputNote,
-    utils::{Deserializable, DeserializationError},
-};
+use miden_client::{Client as MidenClient, ClientError as MidenClientError, rpc::{Endpoint, TonicRpcClient}, store::{Store, sqlite_store::SqliteStore}, transaction::{TransactionRequestBuilder, TransactionRequestError}, ExecutionOptions};
+use miden_objects::{AccountIdError, Felt, NoteError, Word, ZERO, account::{AccountFile, AccountId}, asset::Asset, crypto::rand::RpoRandomCoin, note::{
+    Note, NoteAssets, NoteExecutionHint, NoteFile, NoteInputs, NoteMetadata, NoteRecipient,
+    NoteType,
+}, transaction::OutputNote, utils::{Deserializable, DeserializationError}, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES};
 
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
@@ -64,6 +51,7 @@ impl MixerClient {
         rpc_endpoint: &str,
         rpc_timeout_ms: u64,
         store_filename: Option<PathBuf>,
+        debug: bool
     ) -> Result<Self, MixerClientError> {
         let store = SqliteStore::new(
             store_filename
@@ -89,10 +77,15 @@ impl MixerClient {
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
             Arc::new(()),
-            false,
+            ExecutionOptions::new(
+                Some(MAX_TX_EXECUTION_CYCLES),
+                MIN_TX_EXECUTION_CYCLES,
+                debug,
+                debug
+            ).unwrap(),
+            None,
+            None,
             "".to_string(),
-            None,
-            None,
         );
 
         Ok(Self { client })
@@ -161,14 +154,9 @@ impl MixerClient {
 
     pub async fn mix(
         &mut self,
-        note_file: NoteFile,
+        note: Note,
         account_id: AccountId,
     ) -> Result<String, MixerClientError> {
-        let note = match note_file {
-            NoteFile::NoteWithProof(ref note, _) => Ok(note),
-            _ => Err(MixerClientError::InvalidNoteTypeError()),
-        }?;
-
         if note.recipient().script().root() == croschain().root() {
             Ok(())
         } else {
@@ -176,7 +164,7 @@ impl MixerClient {
         }?;
 
         // reconstruct expected note from the bridge
-        let expected_bridge_note = get_public_bridge_output_note(note)?;
+        let expected_bridge_note = get_public_bridge_output_note(&note)?;
 
         // sync state with blockchain
         self.client.sync_state().await?;
@@ -212,7 +200,7 @@ impl MixerClient {
             .new_transaction(
                 account_id,
                 TransactionRequestBuilder::new()
-                    .with_own_output_notes(vec![expected_bridge_note])
+                    .own_output_notes(vec![expected_bridge_note])
                     .with_empty_script(true)
                     .build_consume_notes(vec![note_id])?,
             )

@@ -1,10 +1,11 @@
 use std::ops::Not;
-
+use miden_objects::block::BlockNumber;
 use rocket::http::Status;
 use rocket::response::{Responder, status};
 use rocket::serde::json::Json;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{State, delete, get, post};
+use miden_objects::note::{Note as OnchainNote, NoteFile};
 
 use super::{MixRequest, error::EndpointError};
 use crate::db::{Pool, models::NoteStorage, models::Storable as _, models::notes::Note as DbNote};
@@ -119,17 +120,17 @@ impl TryFrom<MixRequest> for crate::db::models::notes::Note {
     type Error = ErrorResponse; // ! FIXME: bad, should return client error convertible to ErrorResponse
 
     fn try_from(req: MixRequest) -> Result<Self, Self::Error> {
-        let note_file = utils::from_hex_string(&req.note_text).map_err(|e| ErrorResponse {
-            error: format!("error reading note content: {e}"),
+        let note = OnchainNote::try_from(&req).map_err(|err| ErrorResponse {
+            error: err.to_string(),
         })?;
 
-        if utils::is_note_with_proof(&note_file).not() {
-            return Err(ErrorResponse {
-                error: "note is without proof".to_string(),
-            });
-        }
+        let note_id: miden_objects::note::NoteId = note.id();
 
-        let note_id: miden_objects::note::NoteId = utils::extract_note_id(&note_file);
+        let note_file = NoteFile::NoteDetails {
+            details: note.clone().into(),
+            tag: Some(note.metadata().tag()),
+            after_block_num: BlockNumber::from(0)
+        };
 
         Ok(crate::db::models::notes::Note {
             note_id: note_id.to_string(),

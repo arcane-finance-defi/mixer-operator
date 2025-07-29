@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use dotenv::dotenv;
-use rocket::{Build, Rocket, http::Method};
-use rocket_cors::{AllowedOrigins, CorsOptions};
+use rocket::http::Method;
+use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -16,40 +16,18 @@ use mixer_operator::{
 fn rocket(mixer_state: MixerState, db_pool: db::Pool) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
+        .send_wildcard(true)
         .allowed_methods(
-            vec![Method::Get, Method::Post, Method::Patch]
+            vec![Method::Get, Method::Post, Method::Patch, Method::Put, Method::Delete, Method::Options]
                 .into_iter()
                 .map(From::from)
                 .collect(),
         )
-        .allow_credentials(true);
+        .allowed_headers(AllowedHeaders::all())
+        .to_cors()
+        .expect("CORS build error");
 
-    let rocket: rocket::Rocket<rocket::Build> =
-        rocket::build().attach(cors.to_cors().expect("rocket skeleton with CORS fairing"));
-
-    rocket
-        .manage(mixer_state)
-        .manage(db_pool) // TODO: move out to NoteStorage?
-        // legacy api
-        .mount(
-            "/",
-            rocket::routes![
-                api::mix_post_handler, // Mounting /mix
-            ],
-        )
-        // new api
-        .mount(
-            "/api/v1/",
-            rocket::routes![
-                api::mix_post_handler,
-                api::note_drafts::post_new_handler,
-                api::note_drafts::get_handler,
-                api::note_drafts::get_by_id_handler,
-                api::note_drafts::post_activate_by_id_handler,
-                api::note_drafts::delete_by_id_handler,
-            ],
-        )
-}
+    let rocket = rocket::build();
 
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
@@ -81,7 +59,9 @@ async fn main() -> anyhow::Result<()> {
     let mixer_state = MixerState::new(sender);
 
     // main event loop for API launched by rocket
-    rocket(mixer_state, db_pool).launch().await?;
+    mixer_operator::rocket(mixer_state, db_pool, cors)
+        .launch()
+        .await?;
 
     Ok(())
 }
