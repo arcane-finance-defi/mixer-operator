@@ -121,7 +121,11 @@ mod test {
     #[test]
     fn test_request_serder() {
         let req = MixRequest {
-            note_text: "hexsomehex".to_string(),
+            dest_chain_id: 1,
+            dest_address: "0x123".to_string(),
+            serial_num_hex: "0x123".to_string(),
+            bridge_serial_num_hex: "0x123".to_string(),
+            amount: 100,
             account_id: "0xsomehex".to_string(),
         };
 
@@ -129,7 +133,7 @@ mod test {
 
         assert_eq!(
             serialized_request,
-            r#"{"note_text":"hexsomehex","account_id":"0xsomehex"}"#
+            r#"{"dest_chain_id":1,"dest_address":"0x123","serial_num_hex":"0x123","bridge_serial_num_hex":"0x123","amount":100,"account_id":"0xsomehex"}"#
         );
     }
 }

@@ -35,3 +35,8 @@ cargo run --release
 3. Stop the previous version `killall mixer-operator`
 4. Copy the binaries to the server `scp ./target/x86_64-unknown-linux-gnu/release/mixer-operator root@156.67.63.214:/root/mixer/mixer-operator`
 5. Start the service `cd ./mixer && nohup ./mixer-operator &`
+
+## How to test
+
+1. Fill _.env_ file. `cp .env.example .env` and fill the _TEST_PRIVATE_KEY_ env var with evm private key of the test account
+2. Run test with `cargo test --package mixer-operator --test mixing_flow test_usdc_mixing_flow -- --exact`

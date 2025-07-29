@@ -34,20 +34,15 @@ fn describe_evm_tx(tx_id: &str, rpc: &str) {
     let _ = run("cast", &["receipt", tx_id, "--rpc-url", rpc]);
 }
 
-fn describe_miden_tx(tx_id: &str) {
-    println!("> Miden TX:");
-    let _ = run("miden-bridge", &["tx", "describe", tx_id]);
-}
-
 #[test]
 fn test_usdc_mixing_flow() {
     dotenv::dotenv().ok();
 
     let sepolia_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com";
     let usdc_address = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
-    let bridge_address = "0x1ca41f72bc07DbEb85e059e18cb9DF9781fDC1F3";
-    let miden_usdc = "0xf12903e6b9d03b2000013b8382c73e";
-    let evm_min_balance = 10000000000000000u128;
+    let bridge_address = "0x0b03df1D4B3884b8987254D0C990342B571183AF";
+    let miden_usdc = "0x63c9d7af451fda2000fa06ce0bdefd";
+    let evm_min_balance = 1000000000000000u128;
 
     if !std::path::Path::new("miden-client.toml").exists() {
         println!("miden-client.toml not found. Initializing...");
@@ -139,17 +134,6 @@ fn test_usdc_mixing_flow() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 println!("MIX output:\n{stdout}");
-
-                let tx_id = stdout
-                    .lines()
-                    .find(|l| l.contains("Generated tx id"))
-                    .and_then(|l| l.split("0x").nth(1))
-                    .map(|s| format!("0x{}", s.trim()))
-                    .unwrap_or_default();
-
-                if !tx_id.is_empty() {
-                    describe_miden_tx(&tx_id);
-                }
 
                 sleep(Duration::from_secs(90));
                 let receiver_after = get_usdc_balance(&receiver_address, sepolia_rpc_url, usdc_address);

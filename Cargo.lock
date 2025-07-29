@@ -2108,6 +2108,7 @@ dependencies = [
  "diesel",
  "diesel_cli",
  "dotenv",
+ "dotenvy",
  "function_name",
  "glob",
  "hex",
