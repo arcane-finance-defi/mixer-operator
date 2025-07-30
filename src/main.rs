@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use dotenv::dotenv;
 use rocket::http::Method;
+use rocket::{Build, Rocket};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use tokio::sync::mpsc;
 use tracing::info;
@@ -13,7 +14,10 @@ use mixer_operator::{
     state::MixerState,
 };
 
-fn rocket(mixer_state: MixerState, db_pool: db::Pool) -> Rocket<Build> {
+#[rocket::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
+
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
         .send_wildcard(true)
@@ -26,12 +30,6 @@ fn rocket(mixer_state: MixerState, db_pool: db::Pool) -> Rocket<Build> {
         .allowed_headers(AllowedHeaders::all())
         .to_cors()
         .expect("CORS build error");
-
-    let rocket = rocket::build();
-
-#[rocket::main]
-async fn main() -> anyhow::Result<()> {
-    dotenv().ok();
 
     logging::init();
     info!("Starting {PACKAGE}, version {VERSION}");
