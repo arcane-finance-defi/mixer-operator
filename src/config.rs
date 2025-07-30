@@ -49,10 +49,6 @@ impl Config {
     pub fn db(&self) -> &Database {
         &self.db
     }
-
-    pub fn debug(&self) -> bool {
-        self.debug.unwrap_or(false)
-    }
 }
 
 #[derive(Deserialize)]

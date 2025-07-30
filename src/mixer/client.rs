@@ -64,7 +64,7 @@ impl MixerClient {
         rpc_endpoint: &str,
         rpc_timeout_ms: u64,
         store_filename: Option<PathBuf>,
-        debug: bool
+        debug: bool,
     ) -> Result<Self, MixerClientError> {
         let store = SqliteStore::new(
             store_filename.unwrap_or(PathBuf::from(DEFAULT_STORAGE_FILE.to_string())),

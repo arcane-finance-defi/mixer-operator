@@ -28,7 +28,7 @@ pub fn to_hex_string(note_file: NoteFile) -> String {
 }
 
 pub fn word_from_hex(hexstr: &str) -> anyhow::Result<Word> {
-    let bytes = hex::decode(&hexstr).context("decoding from hex str")?;
+    let bytes = hex::decode(hexstr).context("decoding from hex str")?;
     let word = Word::read_from_bytes(&bytes).context("reading word from bytes")?;
 
     Ok(word)

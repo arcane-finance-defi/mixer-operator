@@ -38,5 +38,5 @@ cargo run --release
 
 ## How to test
 
-1. Fill _.env_ file. `cp .env.example .env` and fill the _TEST_PRIVATE_KEY_ env var with evm private key of the test account
-2. Run test with `cargo test --package mixer-operator --test mixing_flow test_usdc_mixing_flow -- --exact`
+1. Fill _.env_ file. `cp .env.example .env` and fill the _TEST_PRIVATE_KEY_ env var with EVM private key of the source test account, _TEST_RECEIVER_ADDRESS_ with public EVM address of target account, _TEST_USDC_AMOUNT_ to specify custom amount of USDC tokens to be mixed
+2. Run test with `cargo test --package mixer-operator --test mixing_flow test_usdc_mixing_flow -- --exact` (may take some time)

@@ -1,0 +1,9 @@
+# Specify the edition for style consistency
+style_edition = "2024"
+
+# Set the maximum line length
+max_width = 100
+
+# Ignore specific files or directories from formatting
+# (on nightly only)
+# ignore = ["tests/*"]

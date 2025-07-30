@@ -10,7 +10,7 @@ use rocket::{
     serde::{Deserialize, Serialize, json::Json},
 };
 use tokio::sync::oneshot;
-use tracing;
+use tracing::{info, instrument};
 
 use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
@@ -22,7 +22,7 @@ pub mod note_drafts;
 type MixResult = Result<String, MixerClientError>;
 
 #[post("/mix", data = "<data>")]
-#[tracing::instrument(skip(data, state))]
+#[instrument(skip(data, state))]
 pub async fn mix_post_handler(
     data: Json<MixRequest>,
     state: &RocketState<MixerState>,

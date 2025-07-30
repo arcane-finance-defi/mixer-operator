@@ -127,6 +127,8 @@ async fn main() -> anyhow::Result<ExitCode> {
         }
     }
 
+    // db_pool.
+
     mixer_worker.join().expect("mixer thread finished");
 
     Ok(exit_code)

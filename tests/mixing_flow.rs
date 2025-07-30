@@ -21,12 +21,15 @@ fn run(cmd: &str, args: &[&str]) -> String {
 }
 
 fn get_usdc_balance(addr: &str, rpc: &str, token: &str) -> u128 {
-    run("cast", &["balance", addr, "--rpc-url", rpc, "--erc20", token])
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .parse::<u128>()
-        .unwrap()
+    run(
+        "cast",
+        &["balance", addr, "--rpc-url", rpc, "--erc20", token],
+    )
+    .split_whitespace()
+    .next()
+    .unwrap()
+    .parse::<u128>()
+    .unwrap()
 }
 
 fn describe_evm_tx(tx_id: &str, rpc: &str) {
@@ -35,8 +38,9 @@ fn describe_evm_tx(tx_id: &str, rpc: &str) {
 }
 
 #[test]
+#[rustfmt::skip] 
 fn test_usdc_mixing_flow() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let sepolia_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com";
     let usdc_address = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
