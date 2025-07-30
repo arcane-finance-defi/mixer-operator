@@ -10,11 +10,24 @@ use miden_bridge::{
     accounts::token_wrapper::bridge_note_tag,
     notes::bridge::{bridge, croschain},
 };
-use miden_client::{Client as MidenClient, ClientError as MidenClientError, rpc::{Endpoint, TonicRpcClient}, store::{Store, sqlite_store::SqliteStore}, transaction::{TransactionRequestBuilder, TransactionRequestError}, ExecutionOptions};
-use miden_objects::{AccountIdError, Felt, NoteError, Word, ZERO, account::{AccountFile, AccountId}, asset::Asset, crypto::rand::RpoRandomCoin, note::{
-    Note, NoteAssets, NoteExecutionHint, NoteFile, NoteInputs, NoteMetadata, NoteRecipient,
-    NoteType,
-}, transaction::OutputNote, utils::{Deserializable, DeserializationError}, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES};
+use miden_client::{
+    Client as MidenClient, ClientError as MidenClientError,
+    rpc::{Endpoint, TonicRpcClient},
+    store::{Store, sqlite_store::SqliteStore},
+    transaction::{TransactionRequestBuilder, TransactionRequestError},
+};
+use miden_objects::{
+    AccountIdError, Felt, NoteError, Word, ZERO,
+    account::{AccountFile, AccountId},
+    asset::Asset,
+    crypto::rand::RpoRandomCoin,
+    note::{
+        Note, NoteAssets, NoteExecutionHint, NoteFile, NoteId, NoteInputs, NoteMetadata,
+        NoteRecipient, NoteType,
+    },
+    transaction::OutputNote,
+    utils::{Deserializable, DeserializationError},
+};
 
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
@@ -54,9 +67,7 @@ impl MixerClient {
         debug: bool
     ) -> Result<Self, MixerClientError> {
         let store = SqliteStore::new(
-            store_filename
-                .or(Some(PathBuf::from(DEFAULT_STORAGE_FILE.to_string())))
-                .unwrap(),
+            store_filename.unwrap_or(PathBuf::from(DEFAULT_STORAGE_FILE.to_string())),
         )
         .await
         .map_err(MidenClientError::StoreError)?;
@@ -181,12 +192,12 @@ impl MixerClient {
         let note_id = self.client.import_note(note_file).await?;
 
         // obtain account to consume to
-        let account = self.client.try_get_account(account_id.clone()).await;
+        let account = self.client.try_get_account(account_id).await;
 
         // TODO: errors cast
         if let Err(MidenClientError::AccountDataNotFound(_)) = account {
             Err(MixerClientError::NotManageableAccountError(
-                account_id.clone().to_hex(),
+                account_id.to_hex(),
             ))
         } else {
             Ok(())
@@ -195,16 +206,12 @@ impl MixerClient {
         // sync state
         self.client.sync_state().await?;
 
-        let tx = self
-            .client
-            .new_transaction(
-                account_id,
-                TransactionRequestBuilder::new()
-                    .own_output_notes(vec![expected_bridge_note])
-                    .with_empty_script(true)
-                    .build_consume_notes(vec![note_id])?,
-            )
-            .await?;
+        let tx_req = TransactionRequestBuilder::new()
+            .with_own_output_notes(vec![expected_bridge_note])
+            .with_empty_script(true)
+            .build_consume_notes(vec![note_id])?;
+
+        let tx = self.client.new_transaction(account_id, tx_req).await?;
         info!("Built transaction");
 
         let tx_id = tx.executed_transaction().id();
@@ -215,6 +222,16 @@ impl MixerClient {
         self.cleanup().await?;
 
         Ok(tx_id.to_hex())
+    }
+
+    pub async fn is_note_onchain(&mut self, note_id: NoteId) -> Result<bool, MixerClientError> {
+        self.client.sync_state().await?;
+
+        Ok(self
+            .client
+            .get_note_inclusion_proof(note_id)
+            .await?
+            .is_some())
     }
 }
 
@@ -256,8 +273,8 @@ fn get_public_bridge_output_note(
         .map_err(|_| PublicNoteConstructorError::MalformedSerialNumber())?;
 
     let inputs = NoteInputs::new(
-        vec![
-            Word::from(Asset::Fungible(crosschain_asset.clone())).to_vec(),
+        [
+            Word::from(Asset::Fungible(*crosschain_asset)).to_vec(),
             input_note.inputs().values()[4..].to_vec(),
         ]
         .concat(),

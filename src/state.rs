@@ -1,13 +1,12 @@
-use crate::mixer::MixClientRequest;
-use tokio::sync::mpsc;
+use crate::mixer::MixerClentSender;
 
 #[derive(Debug)]
 pub struct MixerState {
-    pub client: mpsc::Sender<MixClientRequest>,
+    pub client: MixerClentSender,
 }
 
 impl MixerState {
-    pub fn new(client: mpsc::Sender<MixClientRequest>) -> Self {
+    pub fn new(client: MixerClentSender) -> Self {
         MixerState { client }
     }
 }
