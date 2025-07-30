@@ -1,16 +1,29 @@
-use diesel::r2d2::{self, ConnectionManager};
-use diesel::sqlite::SqliteConnection;
+use deadpool_diesel::sqlite::{Manager, Pool, Runtime};
+use diesel::SqliteConnection;
 
 pub mod models;
 pub mod schema;
 
 pub type DbConnection = SqliteConnection;
-pub type Pool = r2d2::Pool<ConnectionManager<DbConnection>>;
+pub type DbPool = Pool;
 
-pub fn connect(database_url: &str) -> Pool {
-    let manager = ConnectionManager::<DbConnection>::new(database_url);
+pub fn connect_pool(database_url: &str) -> anyhow::Result<Pool> {
+    let manager = Manager::new(database_url, Runtime::Tokio1);
 
-    r2d2::Pool::builder()
-        .build(manager)
-        .expect("Database connection pool")
+    let pool = Pool::builder(manager)
+        // .max_size(max_conn) // default is cpu * 4
+        .build()?;
+
+    Ok(pool)
+}
+
+// concrete type behind database provider which implements repository traits
+pub struct DatabaseStorage {
+    pool: DbPool,
+}
+
+impl DatabaseStorage {
+    pub fn new(pool: DbPool) -> Self {
+        DatabaseStorage { pool }
+    }
 }

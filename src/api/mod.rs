@@ -1,20 +1,19 @@
 use miden_bridge::notes::BRIDGE_USECASE;
 use miden_bridge::notes::crosschain::new_crosschain_note;
 use miden_bridge::utils::evm_address_to_felts;
-use miden_client::{Felt, Word};
-use miden_objects::{account::AccountId, note::NoteFile, utils::Deserializable};
+use miden_client::Felt;
+use miden_objects::account::AccountId;
 use miden_objects::note::{Note, NoteTag};
 use miden_objects::utils::parse_hex_string_as_word;
-use tokio::sync::oneshot;
-use tracing;
 use rocket::{
     Responder, State as RocketState, post,
     serde::{Deserialize, Serialize, json::Json},
 };
-use tracing::info;
+use tokio::sync::oneshot;
+use tracing::{info, instrument};
+
 use self::error::EndpointError;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
-use crate::mixer::utils::word_from_hex;
 use crate::state::MixerState;
 
 mod error;
@@ -23,12 +22,14 @@ pub mod note_drafts;
 type MixResult = Result<String, MixerClientError>;
 
 #[post("/mix", data = "<data>")]
-#[tracing::instrument]
+#[instrument(skip(data, state))]
 pub async fn mix_post_handler(
     data: Json<MixRequest>,
     state: &RocketState<MixerState>,
 ) -> Result<Json<MixResponse>, ErrorResponse> {
-    let note = Note::try_from(&data.0).map_err(|err| ErrorResponse {
+    let data = data.into_inner();
+
+    let note = Note::try_from(&data).map_err(|err| ErrorResponse {
         error: err.to_string(),
     })?;
 
@@ -84,7 +85,7 @@ impl TryFrom<&MixRequest> for Note {
             faucet_id,
             value.amount,
             faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?
+            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
         )?;
 
         Ok(note)
@@ -120,19 +121,26 @@ mod test {
     #[test]
     fn test_request_serder() {
         let req = MixRequest {
-            dest_chain_id: 1,
-            dest_address: "0x123".to_string(),
-            serial_num_hex: "0x123".to_string(),
-            bridge_serial_num_hex: "0x123".to_string(),
-            amount: 100,
+            dest_chain_id: 112211,
+            dest_address: "0xsomehexdstaddr".to_string(),
+            serial_num_hex: "0xsomehexserial".to_string(),
+            bridge_serial_num_hex: "0xsomehexbridge".to_string(),
+            amount: 50000,
             account_id: "0xsomehex".to_string(),
         };
+        let expected_request: &str = r#"{
+            "dest_chain_id": 112211,
+            "dest_address": "0xsomehexdstaddr",
+            "serial_num_hex": "0xsomehexserial",
+            "bridge_serial_num_hex": "0xsomehexbridge",
+            "amount": 50000,
+            "account_id": "0xsomehex"
+            }"#;
+        let expected_request = expected_request.replace("\n", "");
+        let expected_request = expected_request.replace(" ", "");
 
         let serialized_request = json::to_string(&req).expect("Serialized MixRequest");
 
-        assert_eq!(
-            serialized_request,
-            r#"{"dest_chain_id":1,"dest_address":"0x123","serial_num_hex":"0x123","bridge_serial_num_hex":"0x123","amount":100,"account_id":"0xsomehex"}"#
-        );
+        assert_eq!(serialized_request, expected_request);
     }
 }

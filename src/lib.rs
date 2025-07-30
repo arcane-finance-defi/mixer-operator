@@ -1,42 +1,12 @@
-use rocket::{Build, Rocket};
-use rocket_cors::Cors;
-
 pub mod api;
 pub mod config;
 pub mod db;
+pub mod executor;
 pub mod logging;
 pub mod mixer;
+pub mod named_future;
 pub mod state;
 mod test;
 
-use crate::db::Pool;
-use crate::state::MixerState;
-
 pub const PACKAGE: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-pub fn rocket(mixer_state: MixerState, db_pool: Pool, cors: Cors) -> Rocket<Build> {
-    rocket::build()
-        .manage(mixer_state)
-        .manage(db_pool)// TODO: move out to NoteStorage?
-        // legacy api
-        .mount(
-            "/",
-            rocket::routes![
-                api::mix_post_handler, // Mounting /mix
-            ],
-        )
-        // new api
-        .mount(
-            "/api/v1/",
-            rocket::routes![
-                api::mix_post_handler,
-                api::note_drafts::post_new_handler,
-                api::note_drafts::get_handler,
-                api::note_drafts::get_by_id_handler,
-                api::note_drafts::post_activate_by_id_handler,
-                api::note_drafts::delete_by_id_handler,
-            ],
-        )
-        .attach(cors)
-}
