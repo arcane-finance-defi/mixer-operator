@@ -18,7 +18,7 @@ ___./Rocket.toml___ contains the configs for the service
 
 ## Prerequisites
 
-* rust v1.87.0
+* rust v1.88.0
 
 ## How to run
 
