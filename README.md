@@ -38,5 +38,11 @@ cargo run --release
 
 ## How to test
 
-1. Fill _.env_ file. `cp .env.example .env` and fill the _TEST_PRIVATE_KEY_ env var with EVM private key of the source test account, _TEST_RECEIVER_ADDRESS_ with public EVM address of target account, _TEST_USDC_AMOUNT_ to specify custom amount of USDC tokens to be mixed
-2. Run test with `cargo test --package mixer-operator --test mixing_flow test_usdc_mixing_flow -- --exact` (may take some time)
+### Test prerequisites
+
+* Latest version of [miden-bridge CLI](https://github.com/arcane-finance-defi/miden-bridge-cli)
+* [Foundry](https://getfoundry.sh/) toolchain
+
+1. Cleanup previous cli configs `rm -r miden-client.toml store.sqlite3 templates keystore`
+2. Fill _.env_ file. `cp .env.example .env` and fill the _TEST_PRIVATE_KEY_ env var with EVM private key of the source test account, _TEST_RECEIVER_ADDRESS_ with public EVM address of target account, _TEST_USDC_AMOUNT_ to specify custom amount of USDC tokens to be mixed. __DO NOT USE THE ACCOUNT THAT HOLDS ANY REAL ASSETS. THE PRIVATE KEY WILL BE INCLUDED INTO THE TEST LOGS__
+3. Run test with `cargo test --package mixer-operator --test mixing_flow test_usdc_mixing_flow -- --exact` (may take some time)
