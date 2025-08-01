@@ -49,7 +49,7 @@ cargo run --release
 
 ### Test prerequisites
 
-* Latest version of [miden-bridge CLI](https://github.com/arcane-finance-defi/miden-bridge-cli) (Install with `cargo install --git https://github.com/arcane-finance-defi/miden-bridge-cli miden-cli` command)
+* Latest version of [miden-bridge CLI](https://github.com/arcane-finance-defi/miden-bridge-cli) (Install with `cargo install --git https://github.com/arcane-finance-defi/miden-bridge-cli miden-client-cli` command)
 * [Foundry](https://getfoundry.sh/) toolchain
 
 1. Cleanup previous cli configs `rm -r miden-client.toml store.sqlite3 templates keystore`
