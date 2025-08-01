@@ -120,7 +120,7 @@ fn test_usdc_mixing_flow() {
 
     for i in 1..=5 {
         println!("Waiting relayer attempt {}/5...", i);
-        sleep(Duration::from_secs(90));
+        sleep(Duration::from_secs(180));
 
         let mix = Command::new("miden-bridge")
             .args(&[
@@ -139,7 +139,7 @@ fn test_usdc_mixing_flow() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 println!("MIX output:\n{stdout}");
 
-                sleep(Duration::from_secs(90));
+                sleep(Duration::from_secs(180));
                 let receiver_after = get_usdc_balance(&receiver_address, sepolia_rpc_url, usdc_address);
                 let delta = receiver_after.saturating_sub(receiver_before);
                 println!("Receiver after: {:.2} (+{:.2})", receiver_after as f64 / 1e6, delta as f64 / 1e6);
