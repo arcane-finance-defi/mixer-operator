@@ -1,7 +1,6 @@
 # Miden mixer operator
 
-Mixer operator is rust based offchain service that generates the consume-note transactions with provided CROSSCHAIN notes and preconfigured public faucet accounts.
-
+The mixer operator is a Rust-based off-chain service that generates consume-note transactions using the provided cross-chain notes and preconfigured public faucet accounts.
 ## API
 
 The service provides singe endpoint `POST /mix` that generates tx from the note and account and returns tx id
