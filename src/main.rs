@@ -99,10 +99,13 @@ async fn main() -> anyhow::Result<ExitCode> {
         event_loop(config, receiver, runtime, mixer_token);
     });
 
+    let mut db_storage = db::DatabaseStorage::new(db_pool.clone());
+    db_storage.initialize().await?;
+
     // Note executor task
     handles.push(executor::spawn(
         sender.clone(),
-        db::DatabaseStorage::new(db_pool.clone()),
+        db_storage,
         cancellation_token.clone(),
     ));
 
