@@ -281,7 +281,8 @@ fn get_public_bridge_output_note(
     let inputs = NoteInputs::new(
         [
             Word::from(Asset::Fungible(*crosschain_asset)).to_vec(),
-            input_note.inputs().values()[4..].to_vec(),
+            input_note.inputs().values()[4..7].to_vec(),
+            input_note.inputs().values()[8..].to_vec(),
         ]
         .concat(),
     )?;

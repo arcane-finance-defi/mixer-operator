@@ -82,6 +82,7 @@ impl TryFrom<&MixRequest> for Note {
                 .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?,
             Felt::new(value.dest_chain_id),
             evm_address_to_felts(&value.dest_address)?,
+            None,
             faucet_id,
             value.amount,
             faucet_id,
