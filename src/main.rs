@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
+use rocket_okapi::openapi_get_routes;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -50,14 +51,15 @@ fn rocket(
         .mount(
             "/",
             rocket::routes![
-                api::mix_post_handler, // Mounting /mix
+                api::mix::post_handler, // Mounting /mix
             ],
         )
         // new api
         .mount(
             "/api/v1/",
             rocket::routes![
-                api::mix_post_handler,
+                api::mix::post_handler,
+                api::mix::delayed_post_handler,
                 api::note_drafts::post_new_handler,
                 api::note_drafts::get_status_handler,
                 // api::note_drafts::get_by_id_handler,
@@ -65,6 +67,14 @@ fn rocket(
                 // api::note_drafts::delete_by_id_handler,
             ],
         )
+        // swagger
+        // .mount(
+        //     "/swagger-ui/",
+        //     make_swagger_ui(&SwaggerUIConfig {
+        //         url: "../openapi.json".to_owned(),
+        //         ..Default::default()
+        //     }),
+        // )
 }
 
 #[rocket::main]
