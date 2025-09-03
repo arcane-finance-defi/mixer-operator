@@ -45,3 +45,4 @@ fang = { git = "https://github.com/ayrat555/fang.git" , rev = "31a5ac64f86448e5a
 miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", branch = "main", features = ["std", "async"] }
 miden-client = { git = " ssh://git@github.com/arcane-finance-defi/miden-bridge-cli.git", branch = "main", features = ["tonic", "sqlite"] }
 miden-objects = "0.10.0"
+uuid = "1.18.1"

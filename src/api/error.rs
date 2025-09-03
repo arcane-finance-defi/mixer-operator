@@ -3,13 +3,15 @@ use crate::mixer::client::MixerClientError;
 use hex::FromHexError;
 use miden_objects::AccountIdError;
 use miden_objects::utils::DeserializationError;
-use rocket::response;
+use rocket::response::Responder;
+use rocket::serde::json::json;
+use rocket::{response, serde::json::Json};
 use rocket::http::Status;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Error, Debug)]
-pub(super) enum EndpointError { // TODO: what visibility should we use?
+pub enum EndpointError { 
     #[error(transparent)]
     FromHex(#[from] FromHexError),
     #[error(transparent)]
@@ -42,8 +44,13 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
         // sentry::capture_error(&self);
 
         match self {
-            // in our simplistic example, we're happy to respond with the default 500 responder in all cases 
-            _ => Status::InternalServerError.respond_to(req)
+            EndpointError::Unknown { source } => {
+                let error_message = Json(json!({"error": format!("An unknown error occurred - {source}")}));
+                response::status::Custom(Status::InternalServerError, error_message)
+                    .respond_to(req)
+            }
+            _ => Status::BadRequest
+                    .respond_to(req)
         }
     }
 }

@@ -1,15 +1,13 @@
-use std::ops::Not;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use rocket::response::{Responder, status};
+use rocket::response::Responder;
 use rocket::serde::json::Json;
 use rocket::serde::{Deserialize, Serialize};
-use rocket::{State, delete, get, post};
+use rocket::{State, get, post};
 
-use super::{error::EndpointError};
+use super::error::EndpointError;
 use crate::db::models::{NoteRepository, NoteRepositoryError, notes};
-use crate::mixer::utils;
 
 /// Add note to mix storage
 #[post("/note-drafts/new", data = "<note_data>")]

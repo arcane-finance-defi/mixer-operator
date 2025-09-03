@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use miden_bridge::notes::BRIDGE_USECASE;
 use miden_bridge::notes::crosschain::new_crosschain_note;
 use miden_bridge::utils::evm_address_to_felts;
@@ -12,20 +14,17 @@ use rocket::{
 };
 use rocket_okapi::okapi::schemars;
 use rocket_okapi::okapi::schemars::JsonSchema;
-use rocket_okapi::openapi;
 use tokio::sync::oneshot;
 use tracing::{info, instrument};
+use uuid::Uuid;
 
 use super::error::EndpointError;
+use crate::db::models::NoteRepository;
 use crate::mixer::{MixClientRequest, client::MixerClientError};
 use crate::state::MixerState;
 
 type MixResult = Result<String, MixerClientError>;
 
-/// Docstring for normal mixing endpoint
-// #[openapi(tag = "MixRequest")] 
-// TODO: manual openapi responder 
-// TODO: https://github.com/GREsau/okapi/blob/master/examples/custom_schema/src/error.rs
 #[instrument(skip(data, state))]
 #[post("/mix", data = "<data>")]
 pub async fn post_handler(
@@ -65,16 +64,25 @@ pub async fn post_handler(
     Ok(Json(MixResponse { tx_id: response }))
 }
 
-/// Docstring for delayed mixing endpoint
-// #[openapi(tag = "MixDelayedRequest")]
 #[post("/mix/delayed", data = "<data>")]
-#[instrument(skip(data, state))]
+#[instrument(skip(data, state, note_repo))]
 pub async fn delayed_post_handler(
     data: Json<MixDelayedRequest>,
     state: &RocketState<MixerState>,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
 ) -> Result<Json<MixDelayedResponse>, EndpointError> {
-    //TODO:
-    Ok(Json(MixDelayedResponse { request_id: "random string".to_string() }))
+    let data = data.into_inner();
+    let note = Note::try_from(&data)?;
+    let request_id = Uuid::new_v4();
+    info!("Schedule delayed mixing for note {:?} {request_id}", &note.id());
+
+    // note_repo
+    //     .add_note(note)
+    //     .await
+    //     .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
+
+
+    Ok(Json(MixDelayedResponse { request_id: request_id.to_string() }))
 }
 
 
@@ -104,6 +112,7 @@ pub struct MixDelayedRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
+    delayed_ms: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -163,8 +172,33 @@ impl TryFrom<&MixRequest> for Note {
     }
 }
 
+impl TryFrom<&MixDelayedRequest> for Note {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &MixDelayedRequest) -> Result<Self, Self::Error> {
+        let faucet_id = AccountId::from_hex(&value.account_id)?;
+        let note = new_crosschain_note(
+            parse_hex_string_as_word(value.serial_num_hex.as_str())
+                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?,
+            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
+                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?,
+            Felt::new(value.dest_chain_id),
+            evm_address_to_felts(&value.dest_address)?,
+            None,
+            faucet_id,
+            value.amount,
+            faucet_id,
+            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
+        )?;
+
+        Ok(note)
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use crate::api::mix::MixDelayedRequest;
+
     use super::MixRequest;
     use rocket::serde::json;
 
@@ -194,14 +228,17 @@ mod test {
         assert_eq!(serialized_request, expected_request);
     }
 
-    fn test_mix_delayed_json_schema() { // TODO:
-        let req = MixRequest {
+    #[test]
+    fn test_mix_delayed_json_schema() { 
+        let req = MixDelayedRequest {
             dest_chain_id: 112211,
             dest_address: "0xsomehexdstaddr".to_string(),
             serial_num_hex: "0xsomehexserial".to_string(),
             bridge_serial_num_hex: "0xsomehexbridge".to_string(),
             amount: 50000,
             account_id: "0xsomehex".to_string(),
+            delayed_ms: u64::MAX,
+
         };
         let expected_request: &str = r#"{
             "dest_chain_id": 112211,
@@ -209,7 +246,8 @@ mod test {
             "serial_num_hex": "0xsomehexserial",
             "bridge_serial_num_hex": "0xsomehexbridge",
             "amount": 50000,
-            "account_id": "0xsomehex"
+            "account_id": "0xsomehex",
+            "delay_ms": 0xFFFFFFFFFFFFFFFF
             }"#;
         let expected_request = expected_request.replace("\n", "");
         let expected_request = expected_request.replace(" ", "");
