@@ -1,8 +1,4 @@
-use fang::{run_migrations_postgres, AsyncQueue, AsyncRunnable};
-use fang::asynk::async_queue::AsyncQueueable;
-use fang::serde::{Deserialize, Serialize};
-use fang::async_trait;
-
+use diesel::PgConnection;
 // #[derive(Serialize, Deserialize)]
 // #[serde(crate = "fang::serde")]
 // struct AsyncTask {
@@ -21,16 +17,15 @@ use fang::async_trait;
 //         "my-task-type".to_string()
 //     }
 
-
-//     // If `uniq` is set to true and the task is already in the storage, it won't be inserted again
-//     // The existing record will be returned for for any insertions operaiton
+//     // If `uniq` is set to true and the task is already in the storage, it won't be inserted
+// again     // The existing record will be returned for for any insertions operaiton
 //     fn uniq(&self) -> bool {
 //         true
 //     }
 
 //     // This will be useful if you would like to schedule tasks.
-//     // default value is None (the task is not scheduled, it's just executed as soon as it's inserted)
-//     fn cron(&self) -> Option<Scheduled> {
+//     // default value is None (the task is not scheduled, it's just executed as soon as it's
+// inserted)     fn cron(&self) -> Option<Scheduled> {
 //         let expression = "0/20 * * * Aug-Sep * 2022/1";
 //         Some(Scheduled::CronPattern(expression.to_string()))
 //     }
@@ -46,18 +41,24 @@ use fang::async_trait;
 //         u32::pow(2, attempt)
 //     }
 // }
-
-use diesel::{connection, Connection as _};
-use diesel::PgConnection;
+use diesel::{Connection as _, connection};
+use fang::{
+    AsyncQueue, AsyncRunnable, async_trait,
+    asynk::async_queue::AsyncQueueable,
+    run_migrations_postgres,
+    serde::{Deserialize, Serialize},
+};
 
 fn do_migration(db_url: &str) -> anyhow::Result<()> {
     let mut connection = PgConnection::establish(db_url)?;
     tracing::info!("Running migrations");
-    run_migrations_postgres(&mut connection)?;
+    run_migrations_postgres(&mut connection)
+        .map_err(|e| anyhow::anyhow!("run migration err {e}"))?;
+    tracing::info!("Migrations done");
     Ok(())
 }
 
-pub async fn spawn_task_queue(config: crate::config::TaskQueue) -> anyhow::Result<()> {
+pub async fn prepare_task_queue(config: crate::config::TaskQueue) -> anyhow::Result<()> {
     do_migration(&config.db_url);
 
     let mut queue = AsyncQueue::builder()
@@ -69,9 +70,20 @@ pub async fn spawn_task_queue(config: crate::config::TaskQueue) -> anyhow::Resul
 
     // Always connect first in order to perform any operation
     queue.connect().await?;
+    tracing::info!("Queue connected to database");
+
+    let mut pool: AsyncWorkerPool<AsyncQueue> = AsyncWorkerPool::builder()
+        .number_of_workers(config.workers_max.unwrap_or(1))
+        .queue(queue.clone())
+        .build();
+
+    tracing::info!("Pool created");
+
+    pool.start().await;
+    tracing::info!("Workers started");
+
     Ok(())
 }
-
 
 ///////////////////////////////////////////////////////////////////
 use fang::asynk::async_worker_pool::AsyncWorkerPool;
@@ -79,9 +91,7 @@ use fang::asynk::async_worker_pool::AsyncWorkerPool;
 // Need to create a queue
 // Also insert some tasks
 
-pub fn spawn_workers() {
-
-}
+pub async fn spawn_workers() {}
 
 // let mut pool: AsyncWorkerPool<AsyncQueue> = AsyncWorkerPool::builder()
 //         .number_of_workers(max_pool_size)

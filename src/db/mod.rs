@@ -1,6 +1,6 @@
 use deadpool_diesel::sqlite::{Manager, Pool, Runtime};
 use diesel::SqliteConnection;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 pub mod models;
 pub mod schema;
@@ -31,14 +31,18 @@ impl DatabaseStorage {
     }
 
     pub async fn initialize(&mut self) -> anyhow::Result<()> {
-        let _ = self.pool.get().await?
+        let _ = self
+            .pool
+            .get()
+            .await?
             .interact(|conn| -> anyhow::Result<()> {
-                let _ = conn.run_pending_migrations(MIGRATIONS)
-                    .map_err(anyhow::Error::from_boxed)?;
+                let _ =
+                    conn.run_pending_migrations(MIGRATIONS).map_err(anyhow::Error::from_boxed)?;
 
                 Ok(())
             })
-            .await.expect("Database initialization failed");
+            .await
+            .expect("Database initialization failed");
 
         Ok(())
     }

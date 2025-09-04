@@ -1,27 +1,32 @@
 use std::sync::Arc;
 
-use miden_bridge::notes::BRIDGE_USECASE;
-use miden_bridge::notes::crosschain::new_crosschain_note;
-use miden_bridge::utils::evm_address_to_felts;
+use miden_bridge::{
+    notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
+    utils::evm_address_to_felts,
+};
 use miden_client::Felt;
-use miden_objects::account::AccountId;
-use miden_objects::note::{Note, NoteTag};
-use miden_objects::utils::parse_hex_string_as_word;
-use rocket::http::Status;
+use miden_objects::{
+    account::AccountId,
+    note::{Note, NoteTag},
+    utils::parse_hex_string_as_word,
+};
 use rocket::{
-    response, State as RocketState, post,
+    State as RocketState,
+    http::Status,
+    post, response,
     serde::{Deserialize, Serialize, json::Json},
 };
-use rocket_okapi::okapi::schemars;
-use rocket_okapi::okapi::schemars::JsonSchema;
+use rocket_okapi::okapi::{schemars, schemars::JsonSchema};
 use tokio::sync::oneshot;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
 use super::error::EndpointError;
-use crate::db::models::NoteRepository;
-use crate::mixer::{MixClientRequest, client::MixerClientError};
-use crate::state::MixerState;
+use crate::{
+    db::models::NoteRepository,
+    mixer::{MixClientRequest, client::MixerClientError},
+    state::MixerState,
+};
 
 type MixResult = Result<String, MixerClientError>;
 
@@ -33,8 +38,8 @@ pub async fn post_handler(
 ) -> Result<Json<MixResponse>, EndpointError> {
     let data = data.into_inner();
 
-    let note = Note::try_from(&data)?;//.map_err(|err| ErrorResponse {
-        // error: err.to_string(),
+    let note = Note::try_from(&data)?; //.map_err(|err| ErrorResponse {
+    // error: err.to_string(),
     // })?;
 
     info!("Mixing note: {:?}", &note.id());
@@ -46,11 +51,7 @@ pub async fn post_handler(
     // send request for mixing to miden
     state
         .client
-        .send(MixClientRequest::Mix {
-            note,
-            account_id,
-            response_sink: request,
-        })
+        .send(MixClientRequest::Mix { note, account_id, response_sink: request })
         .await
         .map_err(|e| EndpointError::from(Box::new(e)))?;
 
@@ -81,10 +82,8 @@ pub async fn delayed_post_handler(
     //     .await
     //     .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
 
-
     Ok(Json(MixDelayedResponse { request_id: request_id.to_string() }))
 }
-
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
@@ -136,17 +135,16 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for ErrorResponse {
         // sentry::capture_error(&self);
 
         match self {
-            // in our simplistic example, we're happy to respond with the default 500 responder in all cases 
-            _ => Status::InternalServerError.respond_to(req)
+            // in our simplistic example, we're happy to respond with the default 500 responder in
+            // all cases
+            _ => Status::InternalServerError.respond_to(req),
         }
     }
 }
 
 impl From<EndpointError> for ErrorResponse {
     fn from(value: EndpointError) -> Self {
-        Self {
-            error: value.to_string(),
-        }
+        Self { error: value.to_string() }
     }
 }
 
@@ -197,10 +195,10 @@ impl TryFrom<&MixDelayedRequest> for Note {
 
 #[cfg(test)]
 mod test {
-    use crate::api::mix::MixDelayedRequest;
+    use rocket::serde::json;
 
     use super::MixRequest;
-    use rocket::serde::json;
+    use crate::api::mix::MixDelayedRequest;
 
     #[test]
     fn test_mix_request_json_schema() {
@@ -229,7 +227,7 @@ mod test {
     }
 
     #[test]
-    fn test_mix_delayed_json_schema() { 
+    fn test_mix_delayed_json_schema() {
         let req = MixDelayedRequest {
             dest_chain_id: 112211,
             dest_address: "0xsomehexdstaddr".to_string(),
@@ -238,7 +236,6 @@ mod test {
             amount: 50000,
             account_id: "0xsomehex".to_string(),
             delayed_ms: u64::MAX,
-
         };
         let expected_request: &str = r#"{
             "dest_chain_id": 112211,
@@ -257,4 +254,3 @@ mod test {
         assert_eq!(serialized_request, expected_request);
     }
 }
-

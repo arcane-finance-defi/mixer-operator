@@ -1,13 +1,17 @@
-use miden_objects::account::AccountId;
-use miden_objects::note::{Note, NoteId};
+use miden_objects::{
+    account::AccountId,
+    note::{Note, NoteId},
+};
 use tokio::{
     runtime::Runtime,
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::config::Config;
-use crate::mixer::client::{MixerClient, MixerClientError};
+use crate::{
+    config::Config,
+    mixer::client::{MixerClient, MixerClientError},
+};
 
 pub mod client;
 pub mod utils;
@@ -57,29 +61,22 @@ pub fn event_loop(
         let request = runtime.block_on(receiver.recv());
 
         match request {
-            Some(MixClientRequest::Mix {
-                note,
-                account_id,
-                response_sink,
-            }) => {
+            Some(MixClientRequest::Mix { note, account_id, response_sink }) => {
                 let result = runtime.block_on(client.mix(note, account_id));
                 tracing::info!("MixerClient::Mix {result:#?}");
                 response_sink.send(result).unwrap();
-            }
+            },
 
-            Some(MixClientRequest::Poll {
-                note_id,
-                response_sink,
-            }) => {
+            Some(MixClientRequest::Poll { note_id, response_sink }) => {
                 let result = runtime.block_on(client.is_note_onchain(note_id));
                 tracing::info!("MixerClient::Poll {result:#?}");
                 response_sink.send(result).unwrap();
-            }
+            },
 
             None => {
                 tracing::warn!("Channel closed");
                 break;
-            }
+            },
         }
     }
 

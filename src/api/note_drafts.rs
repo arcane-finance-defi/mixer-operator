@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use rocket::response::Responder;
-use rocket::serde::json::Json;
-use rocket::serde::{Deserialize, Serialize};
-use rocket::{State, get, post};
+use rocket::{
+    State, get, post,
+    response::Responder,
+    serde::{Deserialize, Serialize, json::Json},
+};
 
 use super::error::EndpointError;
 use crate::db::models::{NoteRepository, NoteRepositoryError, notes};
@@ -42,9 +43,7 @@ pub async fn get_status_handler(
         Ok(status) => Ok(Some(Json(status.bits()))),
         Err(error) => match error {
             NoteRepositoryError::NotFound => Ok(None), // 404
-            NoteRepositoryError::Internal(inner) => Err(ErrorResponse {
-                error: inner.to_string(),
-            }),
+            NoteRepositoryError::Internal(inner) => Err(ErrorResponse { error: inner.to_string() }),
             _any_other => Err(ErrorResponse {
                 error: "undefined note repository error".to_string(),
             }),
@@ -100,7 +99,6 @@ pub async fn get_status_handler(
 //     }
 // }
 
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
 struct MixDraftRequest {
@@ -121,9 +119,7 @@ pub struct ErrorResponse {
 
 impl From<EndpointError> for ErrorResponse {
     fn from(value: EndpointError) -> Self {
-        Self {
-            error: value.to_string(),
-        }
+        Self { error: value.to_string() }
     }
 }
 
@@ -133,14 +129,15 @@ impl TryFrom<MixDraftRequest> for crate::db::models::notes::FullNote {
 
     fn try_from(req: MixDraftRequest) -> Result<Self, Self::Error> {
         // use miden_objects::block::BlockNumber;
-        use crate::db::models::notes as models;
-        use miden_objects::note::{Note as OnchainNote, NoteFile};
-        use miden_objects::utils::Serializable as _;
-        use miden_objects::utils::ToHex as _;
+        use miden_objects::{
+            note::{Note as OnchainNote, NoteFile},
+            utils::{Serializable as _, ToHex as _},
+        };
 
-        let note = OnchainNote::try_from(&req).map_err(|err| ErrorResponse {
-            error: err.to_string(),
-        })?;
+        use crate::db::models::notes as models;
+
+        let note =
+            OnchainNote::try_from(&req).map_err(|err| ErrorResponse { error: err.to_string() })?;
 
         let serialized_note = note.to_bytes().to_hex();
         let serialized_note_id = note.id().to_string();
@@ -158,14 +155,14 @@ impl TryFrom<MixDraftRequest> for crate::db::models::notes::FullNote {
 impl TryFrom<&MixDraftRequest> for miden_objects::note::Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixDraftRequest) -> Result<Self, Self::Error> {
-        use miden_objects::account::AccountId;
-        use miden_bridge::notes::crosschain::new_crosschain_note;
-        use miden_objects::utils::parse_hex_string_as_word;
-        use miden_objects::Felt;
-        use miden_bridge::utils::evm_address_to_felts;
-        use miden_objects::note::NoteTag;
-        use miden_bridge::notes::BRIDGE_USECASE;
-        
+        use miden_bridge::{
+            notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
+            utils::evm_address_to_felts,
+        };
+        use miden_objects::{
+            Felt, account::AccountId, note::NoteTag, utils::parse_hex_string_as_word,
+        };
+
         let faucet_id = AccountId::from_hex(&value.account_id)?;
         let note = new_crosschain_note(
             parse_hex_string_as_word(value.serial_num_hex.as_str())

@@ -2,13 +2,6 @@ use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Context as _;
 use futures::{StreamExt as _, stream::FuturesUnordered};
-use rocket::{Build, Rocket, http::Method};
-use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
-use rocket_okapi::openapi_get_routes;
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
-use tracing::info;
-
 use mixer_operator::{
     PACKAGE, VERSION, api,
     config::Config,
@@ -16,6 +9,12 @@ use mixer_operator::{
     mixer::{MixClientRequest, event_loop},
     state::MixerState,
 };
+use rocket::{Build, Rocket, http::Method};
+use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
+use rocket_okapi::openapi_get_routes;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+use tracing::info;
 
 fn rocket(
     mixer_state: MixerState,
@@ -67,14 +66,14 @@ fn rocket(
                 // api::note_drafts::delete_by_id_handler,
             ],
         )
-        // swagger
-        // .mount(
-        //     "/swagger-ui/",
-        //     make_swagger_ui(&SwaggerUIConfig {
-        //         url: "../openapi.json".to_owned(),
-        //         ..Default::default()
-        //     }),
-        // )
+    // swagger
+    // .mount(
+    //     "/swagger-ui/",
+    //     make_swagger_ui(&SwaggerUIConfig {
+    //         url: "../openapi.json".to_owned(),
+    //         ..Default::default()
+    //     }),
+    // )
 }
 
 #[rocket::main]
@@ -113,22 +112,15 @@ async fn main() -> anyhow::Result<ExitCode> {
     db_storage.initialize().await?;
 
     // Note executor task
-    handles.push(executor::spawn(
-        sender.clone(),
-        db_storage,
-        cancellation_token.clone(),
-    ));
+    handles.push(executor::spawn(sender.clone(), db_storage, cancellation_token.clone()));
 
-    // 
+    //
     spawn_task_queue().await?;
 
     // Main event loop for API launched by rocket
-    rocket(
-        MixerState::new(sender),
-        Arc::new(db::DatabaseStorage::new(db_pool.clone())),
-    )
-    .launch()
-    .await?;
+    rocket(MixerState::new(sender), Arc::new(db::DatabaseStorage::new(db_pool.clone())))
+        .launch()
+        .await?;
 
     // At this point the server shut down (launch result is Ok)
     // So do graceful shutdown of other features

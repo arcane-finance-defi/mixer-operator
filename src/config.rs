@@ -1,5 +1,6 @@
-use rocket::serde::Deserialize;
 use std::path::PathBuf;
+
+use rocket::serde::Deserialize;
 
 const DEFAULT_PRIVATE_ACCOUNTS_DIR: &str = "./accounts_for_import";
 
@@ -13,7 +14,7 @@ pub struct Config {
     public_account_ids: String,
     debug: Option<bool>,
     db: Database,
-    tq: TaskQueue
+    tq: TaskQueue,
 }
 
 impl Config {
@@ -30,17 +31,11 @@ impl Config {
     }
 
     pub fn private_account_dir(&self) -> PathBuf {
-        self.private_account_dir
-            .clone()
-            .unwrap_or(DEFAULT_PRIVATE_ACCOUNTS_DIR.into())
+        self.private_account_dir.clone().unwrap_or(DEFAULT_PRIVATE_ACCOUNTS_DIR.into())
     }
 
     pub fn public_account_ids(&self) -> Vec<String> {
-        self.public_account_ids
-            .clone()
-            .split(',')
-            .map(String::from)
-            .collect()
+        self.public_account_ids.clone().split(',').map(String::from).collect()
     }
 
     pub fn debug(&self) -> bool {
@@ -63,5 +58,6 @@ pub struct Database {
 pub struct TaskQueue {
     pub db_url: String,
     pub db_max_pool: Option<u32>,
+    pub workers_max: Option<u32>,
     pub task_max_retry: Option<u64>,
 }

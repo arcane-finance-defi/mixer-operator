@@ -1,9 +1,4 @@
-use rand::{Rng, rng};
-use std::path::PathBuf;
-use std::sync::Arc;
-use thiserror::Error;
-use tokio::fs::read;
-use tracing::info;
+use std::{path::PathBuf, sync::Arc};
 
 use glob::glob;
 use miden_bridge::{
@@ -28,6 +23,10 @@ use miden_objects::{
     transaction::OutputNote,
     utils::{Deserializable, DeserializationError},
 };
+use rand::{Rng, rng};
+use thiserror::Error;
+use tokio::fs::read;
+use tracing::info;
 
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
@@ -117,25 +116,15 @@ impl MixerClient {
 
         info!("Mixer state synced");
 
-        for path in glob(supported_accounts_dir.as_str())
-            .unwrap()
-            .filter_map(Result::ok)
-        {
+        for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
             let account_bytes = read(path).await?;
             let account_file = AccountFile::read_from_bytes(account_bytes.as_slice())?;
             let account_id = account_file.account.id();
             let account_id_hex = account_id.to_hex();
             info!("Importing the private account with id {account_id_hex}");
 
-            if self
-                .client
-                .try_get_account_header(account_id)
-                .await
-                .is_err()
-            {
-                self.client
-                    .add_account(&account_file.account, None, false)
-                    .await?;
+            if self.client.try_get_account_header(account_id).await.is_err() {
+                self.client.add_account(&account_file.account, None, false).await?;
             }
             info!("Private account imported")
         }
@@ -144,12 +133,7 @@ impl MixerClient {
             info!("Importing the public account with id {public_account_id}");
             let public_account_id = AccountId::from_hex(public_account_id.as_str())?;
 
-            if self
-                .client
-                .try_get_account_header(public_account_id)
-                .await
-                .is_err()
-            {
+            if self.client.try_get_account_header(public_account_id).await.is_err() {
                 self.client.import_account_by_id(public_account_id).await?;
             }
             info!("Public account imported")
@@ -198,9 +182,7 @@ impl MixerClient {
 
         // TODO: errors cast
         if let Err(MidenClientError::AccountDataNotFound(_)) = account {
-            Err(MixerClientError::NotManageableAccountError(
-                account_id.to_hex(),
-            ))
+            Err(MixerClientError::NotManageableAccountError(account_id.to_hex()))
         } else {
             Ok(())
         }?;
@@ -233,11 +215,7 @@ impl MixerClient {
     pub async fn is_note_onchain(&mut self, note_id: NoteId) -> Result<bool, MixerClientError> {
         self.client.sync_state().await?;
 
-        Ok(self
-            .client
-            .get_note_inclusion_proof(note_id)
-            .await?
-            .is_some())
+        Ok(self.client.get_note_inclusion_proof(note_id).await?.is_some())
     }
 }
 

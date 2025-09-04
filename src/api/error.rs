@@ -1,16 +1,17 @@
-use crate::mixer::MixClientRequest;
-use crate::mixer::client::MixerClientError;
 use hex::FromHexError;
-use miden_objects::AccountIdError;
-use miden_objects::utils::DeserializationError;
-use rocket::serde::json::json;
-use rocket::{response, serde::json::Json};
-use rocket::http::Status;
+use miden_objects::{AccountIdError, utils::DeserializationError};
+use rocket::{
+    http::Status,
+    response,
+    serde::json::{Json, json},
+};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::mixer::{MixClientRequest, client::MixerClientError};
+
 #[derive(Error, Debug)]
-pub enum EndpointError { 
+pub enum EndpointError {
     #[error(transparent)]
     FromHex(#[from] FromHexError),
     #[error(transparent)]
@@ -44,12 +45,11 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
 
         match self {
             EndpointError::Unknown { source } => {
-                let error_message = Json(json!({"error": format!("An unknown error occurred - {source}")}));
-                response::status::Custom(Status::InternalServerError, error_message)
-                    .respond_to(req)
-            }
-            _ => Status::BadRequest
-                    .respond_to(req)
+                let error_message =
+                    Json(json!({"error": format!("An unknown error occurred - {source}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
+            _ => Status::BadRequest.respond_to(req),
         }
     }
 }

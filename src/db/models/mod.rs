@@ -74,17 +74,11 @@ pub trait NoteRepository: Send + Sync + 'static {
 #[async_trait::async_trait]
 impl NoteRepository for DatabaseStorage {
     async fn add_note(&self, note: FullNote) -> Result<(), NoteRepositoryError> {
-        let conn = self
-            .pool
-            .get()
-            .await
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
         let result = conn
             .interact(move |conn| {
-                diesel::insert_into(schema::notes::table)
-                    .values(&note)
-                    .execute(conn)
+                diesel::insert_into(schema::notes::table).values(&note).execute(conn)
             })
             .await
             .map_err(NoteRepositoryErrorGeneric::new)?
@@ -99,11 +93,7 @@ impl NoteRepository for DatabaseStorage {
     async fn get_note_by_id(&self, note_id: &str) -> Result<FullNote, NoteRepositoryError> {
         let find_note_id = note_id.to_string();
 
-        let conn = self
-            .pool
-            .get()
-            .await
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
         let result = conn
             .interact(|conn| {
@@ -125,11 +115,7 @@ impl NoteRepository for DatabaseStorage {
     ) -> Result<NoteStatus, NoteRepositoryError> {
         let find_note_id = note_id.to_string();
 
-        let conn = self
-            .pool
-            .get()
-            .await
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
         let result = conn
             .interact(|conn| {
@@ -153,11 +139,7 @@ impl NoteRepository for DatabaseStorage {
     ) -> Result<(), NoteRepositoryError> {
         let find_note_id = find_note_id.to_string();
 
-        let conn = self
-            .pool
-            .get()
-            .await
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
         use crate::db::schema::notes::dsl::*;
         let result = conn
@@ -180,14 +162,12 @@ impl NoteRepository for DatabaseStorage {
         &self,
         req_status: NoteStatus,
     ) -> Result<Vec<FullNote>, NoteRepositoryError> {
-        let conn = self
-            .pool
-            .get()
-            .await
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
-        use diesel::dsl::sql;
-        use diesel::sql_types::{Bool, Integer};
+        use diesel::{
+            dsl::sql,
+            sql_types::{Bool, Integer},
+        };
         let result = conn
             .interact(move |conn| {
                 schema::notes::table

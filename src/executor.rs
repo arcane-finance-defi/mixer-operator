@@ -3,7 +3,6 @@
 //! - Extract notes with status satisfying condition to execute
 //! - Create JoinSet of exectution tasks and wait async client to finish them
 //! - Collect results of execution async
-//!
 
 use anyhow::{Context, bail};
 use miden_objects::{
@@ -11,15 +10,17 @@ use miden_objects::{
     note::{Note, NoteId},
     utils::Deserializable,
 };
-use tokio::sync::oneshot;
-use tokio::task::JoinSet;
+use tokio::{sync::oneshot, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
-use crate::db::models::NoteRepository;
-use crate::db::models::notes::{FullNote, NoteStatus};
-use crate::mixer::MixClientRequest;
-use crate::mixer::client::MixerClientError;
-use crate::{mixer::MixerClientSender, named_future::NamedJoinHandle};
+use crate::{
+    db::models::{
+        NoteRepository,
+        notes::{FullNote, NoteStatus},
+    },
+    mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
+    named_future::NamedJoinHandle,
+};
 
 struct NoteExecutor {
     client: MixerClientSender,
@@ -31,10 +32,7 @@ pub fn spawn(
     storage: impl NoteRepository,
     cancellation_token: CancellationToken,
 ) -> NamedJoinHandle {
-    let executor = NoteExecutor {
-        client,
-        storage: Box::new(storage),
-    };
+    let executor = NoteExecutor { client, storage: Box::new(storage) };
 
     crate::named_future::spawn_named("note executor".into(), executor.run(cancellation_token))
 }
@@ -74,12 +72,7 @@ impl NoteExecutor {
         let mut join_set = JoinSet::new();
 
         for note_record in pending_notes {
-            let FullNote {
-                note_id,
-                note,
-                account_id,
-                ..
-            } = note_record;
+            let FullNote { note_id, note, account_id, .. } = note_record;
 
             // TODO: should be unified methods to store and load serialized notes without client
             let note_bytes =
@@ -104,7 +97,7 @@ impl NoteExecutor {
                     } else {
                         tracing::info!("Success");
                     }
-                }
+                },
                 Err(err) => tracing::error!("Failed to execute because {err:#?}"),
             }
         }
@@ -148,17 +141,11 @@ async fn mix(
     let (request, response) = oneshot::channel::<Result<String, MixerClientError>>();
 
     client
-        .send(MixClientRequest::Mix {
-            note,
-            account_id,
-            response_sink: request,
-        })
+        .send(MixClientRequest::Mix { note, account_id, response_sink: request })
         .await?;
 
     // await for result of mixing
-    let tx_id = response
-        .await?
-        .with_context(|| format!("internal mixer error for {note_id}"))?;
+    let tx_id = response.await?.with_context(|| format!("internal mixer error for {note_id}"))?;
 
     Ok((note_id, tx_id))
 }
