@@ -247,7 +247,7 @@ mod test {
             "bridge_serial_num_hex": "0xsomehexbridge",
             "amount": 50000,
             "account_id": "0xsomehex",
-            "delay_ms": 0xFFFFFFFFFFFFFFFF
+            "delayed_ms": 18446744073709551615
             }"#;
         let expected_request = expected_request.replace("\n", "");
         let expected_request = expected_request.replace(" ", "");

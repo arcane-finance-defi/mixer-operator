@@ -119,6 +119,9 @@ async fn main() -> anyhow::Result<ExitCode> {
         cancellation_token.clone(),
     ));
 
+    // 
+    spawn_task_queue().await?;
+
     // Main event loop for API launched by rocket
     rocket(
         MixerState::new(sender),

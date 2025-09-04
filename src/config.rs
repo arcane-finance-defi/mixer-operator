@@ -13,6 +13,7 @@ pub struct Config {
     public_account_ids: String,
     debug: Option<bool>,
     db: Database,
+    tq: TaskQueue
 }
 
 impl Config {
@@ -55,4 +56,12 @@ impl Config {
 #[serde(crate = "rocket::serde")]
 pub struct Database {
     pub url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct TaskQueue {
+    pub db_url: String,
+    pub db_max_pool: Option<u32>,
+    pub task_max_retry: Option<u64>,
 }

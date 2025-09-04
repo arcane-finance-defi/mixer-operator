@@ -3,7 +3,6 @@ use crate::mixer::client::MixerClientError;
 use hex::FromHexError;
 use miden_objects::AccountIdError;
 use miden_objects::utils::DeserializationError;
-use rocket::response::Responder;
 use rocket::serde::json::json;
 use rocket::{response, serde::json::Json};
 use rocket::http::Status;
