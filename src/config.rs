@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use fang::Task;
 use rocket::serde::Deserialize;
 
 const DEFAULT_PRIVATE_ACCOUNTS_DIR: &str = "./accounts_for_import";
@@ -44,6 +45,10 @@ impl Config {
 
     pub fn db(&self) -> &Database {
         &self.db
+    }
+
+    pub fn task_queue(&self) -> &TaskQueue {
+        &self.tq
     }
 }
 

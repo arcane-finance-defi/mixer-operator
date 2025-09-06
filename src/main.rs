@@ -3,11 +3,7 @@ use std::{process::ExitCode, sync::Arc};
 use anyhow::Context as _;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use mixer_operator::{
-    PACKAGE, VERSION, api,
-    config::Config,
-    db, executor, logging,
-    mixer::{MixClientRequest, event_loop},
-    state::MixerState,
+    api, config::Config, db, executor, logging, mixer::{event_loop, MixClientRequest}, state::MixerState, worker::prepare_task_queue, PACKAGE, VERSION
 };
 use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
@@ -88,6 +84,9 @@ async fn main() -> anyhow::Result<ExitCode> {
         .extract::<Config>()
         .context("reading figment provided config")?;
 
+    // Task queue
+    prepare_task_queue(config.task_queue()).await.with_context(|| "prepare task queue")?;
+
     // Prepare sidecar futures
     let cancellation_token = CancellationToken::new();
     let mut handles = FuturesUnordered::new();
@@ -113,9 +112,6 @@ async fn main() -> anyhow::Result<ExitCode> {
 
     // Note executor task
     handles.push(executor::spawn(sender.clone(), db_storage, cancellation_token.clone()));
-
-    //
-    spawn_task_queue().await?;
 
     // Main event loop for API launched by rocket
     rocket(MixerState::new(sender), Arc::new(db::DatabaseStorage::new(db_pool.clone())))

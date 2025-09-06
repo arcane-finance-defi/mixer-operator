@@ -38,10 +38,7 @@ pub async fn post_handler(
 ) -> Result<Json<MixResponse>, EndpointError> {
     let data = data.into_inner();
 
-    let note = Note::try_from(&data)?; //.map_err(|err| ErrorResponse {
-    // error: err.to_string(),
-    // })?;
-
+    let note = Note::try_from(&data)?;
     info!("Mixing note: {:?}", &note.id());
 
     let account_id = AccountId::from_hex(&data.account_id).map_err(EndpointError::from)?;

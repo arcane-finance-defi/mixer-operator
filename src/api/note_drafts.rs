@@ -148,6 +148,7 @@ impl TryFrom<MixDraftRequest> for crate::db::models::notes::FullNote {
             account_id: req.account_id,
             status: models::NoteStatus::ACCEPTED,
             scheduled_datetime: None,
+            request_id: None,
         })
     }
 }

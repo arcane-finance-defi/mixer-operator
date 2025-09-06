@@ -16,6 +16,7 @@ pub struct FullNote {
     pub account_id: String,
     pub scheduled_datetime: Option<NaiveDateTime>,
     pub status: NoteStatus,
+    pub request_id: Option<String>,
 }
 
 #[derive(Insertable)]
@@ -25,6 +26,7 @@ pub struct NewNote<'a> {
     pub note_id: &'a str,
     pub note: &'a str,
     pub account_id: &'a str,
+    pub request_id: &'a str,
 }
 
 bitflags::bitflags! {

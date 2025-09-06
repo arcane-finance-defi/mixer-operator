@@ -13,8 +13,6 @@ diesel.toml
 *.db
 *.sqlite
 *.sqlite3
-migrations/*/down.sql
-migrations/*/up.sql
 
 # === IDE / Editor ===
 .idea/

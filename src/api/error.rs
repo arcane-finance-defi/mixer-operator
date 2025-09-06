@@ -44,6 +44,17 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
         // sentry::capture_error(&self);
 
         match self {
+            EndpointError::Deserialization(err) => {
+                let error_message =
+                    Json(json!({"error": format!("Deserialization error occurred - {err}")}));
+                response::status::Custom(Status::BadRequest, error_message).respond_to(req)
+            },
+            EndpointError::MixerClient(err) => {
+                let error_message =
+                    Json(json!({"error": format!("Mixer Client error occurred - {err}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
+            // TODO: other
             EndpointError::Unknown { source } => {
                 let error_message =
                     Json(json!({"error": format!("An unknown error occurred - {source}")}));
