@@ -1,13 +1,18 @@
 use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Context as _;
+use fang::AsyncQueue;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use mixer_operator::{
-    api, config::Config, db, executor, logging, mixer::{event_loop, MixClientRequest}, state::MixerState, worker::prepare_task_queue, PACKAGE, VERSION
+    PACKAGE, VERSION, api,
+    config::Config,
+    db, executor, logging,
+    mixer::{MixClientRequest, event_loop},
+    state::MixerState,
+    worker::prepare_task_queue,
 };
 use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
-use rocket_okapi::openapi_get_routes;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -15,6 +20,7 @@ use tracing::info;
 fn rocket(
     mixer_state: MixerState,
     note_repo: Arc<dyn db::models::NoteRepository>,
+    task_queue: Arc<AsyncQueue>,
 ) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
@@ -42,6 +48,7 @@ fn rocket(
         // share state
         .manage(mixer_state)
         .manage(note_repo)
+        .manage(task_queue)
         // legacy api
         .mount(
             "/",
@@ -84,15 +91,18 @@ async fn main() -> anyhow::Result<ExitCode> {
         .extract::<Config>()
         .context("reading figment provided config")?;
 
+    // Need initialize db pool to use it by db::DatabaseStorage::storage()
+    db::set_pool_url(config.db().url)?;
+
     // Task queue
-    prepare_task_queue(config.task_queue()).await.with_context(|| "prepare task queue")?;
+    let task_queue = prepare_task_queue(config.task_queue())
+        .await
+        .with_context(|| "prepare task queue")?;
+    let task_queue = Arc::new(task_queue);
 
     // Prepare sidecar futures
     let cancellation_token = CancellationToken::new();
     let mut handles = FuturesUnordered::new();
-
-    let db_url = &config.db().url;
-    let db_pool = db::connect_pool(&db_url)?;
 
     let (sender, receiver) = mpsc::channel::<MixClientRequest>(config.client_count() as usize);
 
@@ -107,16 +117,21 @@ async fn main() -> anyhow::Result<ExitCode> {
         event_loop(config, receiver, runtime, mixer_token);
     });
 
-    let mut db_storage = db::DatabaseStorage::new(db_pool.clone());
-    db_storage.initialize().await?;
-
     // Note executor task
-    handles.push(executor::spawn(sender.clone(), db_storage, cancellation_token.clone()));
+    handles.push(executor::spawn(
+        sender.clone(),
+        db::DatabaseStorage::storage(),
+        cancellation_token.clone(),
+    ));
 
     // Main event loop for API launched by rocket
-    rocket(MixerState::new(sender), Arc::new(db::DatabaseStorage::new(db_pool.clone())))
-        .launch()
-        .await?;
+    rocket(
+        MixerState::new(sender),
+        Arc::new(db::DatabaseStorage::storage()),
+        task_queue.clone(),
+    )
+    .launch()
+    .await?;
 
     // At this point the server shut down (launch result is Ok)
     // So do graceful shutdown of other features

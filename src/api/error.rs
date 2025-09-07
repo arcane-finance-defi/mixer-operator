@@ -8,7 +8,7 @@ use rocket::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::mixer::{MixClientRequest, client::MixerClientError};
+use crate::{mixer::{client::MixerClientError, MixClientRequest}};
 
 #[derive(Error, Debug)]
 pub enum EndpointError {
@@ -24,7 +24,11 @@ pub enum EndpointError {
     OneshotRecv(#[from] oneshot::error::RecvError),
     #[error(transparent)]
     MixerClient(#[from] Box<MixerClientError>),
-    #[error("unknown source error")]
+    #[error("Internal storage error")]
+    InternalStorage(String),
+    #[error("Task queue error")]
+    TaskQueue(String),
+    #[error("Unknown source error")]
     Unknown { source: anyhow::Error },
 }
 
@@ -60,7 +64,26 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
                     Json(json!({"error": format!("An unknown error occurred - {source}")}));
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
-            _ => Status::BadRequest.respond_to(req),
+            _ => Status::InternalServerError.respond_to(req),
         }
+    }
+}
+
+impl From<fang::FangError> for EndpointError {
+    fn from(ferr: fang::FangError) -> Self {
+        EndpointError::TaskQueue(ferr.description)
+    }
+}
+
+impl From<fang::AsyncQueueError> for EndpointError {
+    fn from(qerr: fang::AsyncQueueError) -> Self {
+        tracing::error!("AsyncQueueError occured: {qerr:#?}");
+        EndpointError::TaskQueue(qerr.to_string())
+    }
+}
+
+impl From<crate::db::models::NoteRepositoryError> for EndpointError {
+    fn from(derr: crate::db::models::NoteRepositoryError) -> Self {
+        EndpointError::InternalStorage(derr.to_string())
     }
 }

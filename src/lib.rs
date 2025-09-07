@@ -1,3 +1,5 @@
+mod test;
+
 pub mod api;
 pub mod config;
 pub mod db;
@@ -6,7 +8,7 @@ pub mod logging;
 pub mod mixer;
 pub mod named_future;
 pub mod state;
-mod test;
+pub mod task;
 pub mod worker;
 
 pub const PACKAGE: &str = env!("CARGO_PKG_NAME");

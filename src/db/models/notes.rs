@@ -33,11 +33,12 @@ bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
     #[diesel(sql_type = Integer)]
     pub struct NoteStatus: u8 {
+        const UNDEFINED = 0x00;
         const ACCEPTED = 0x01;
         const RECONSTRUCTED = 0x02;
         const ONCHAIN = 0x04;
         const TXED = 0x08;
-        const CONSUMED = 0x30;
+        const CONSUMED = 0x10;
     }
 }
 

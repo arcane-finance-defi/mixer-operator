@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use anyhow::Context as _;
+use chrono::{DateTime, Duration, TimeDelta, Utc};
+use fang::{AsyncQueue, AsyncQueueable};
 use miden_bridge::{
     notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
     utils::evm_address_to_felts,
@@ -18,14 +21,15 @@ use rocket::{
 };
 use rocket_okapi::okapi::{schemars, schemars::JsonSchema};
 use tokio::sync::oneshot;
-use tracing::{info, instrument};
+use tracing::{info, instrument, trace};
 use uuid::Uuid;
 
 use super::error::EndpointError;
 use crate::{
-    db::models::NoteRepository,
+    db::models::{NoteRepository, notes::FullNote},
     mixer::{MixClientRequest, client::MixerClientError},
     state::MixerState,
+    task,
 };
 
 type MixResult = Result<String, MixerClientError>;
@@ -63,23 +67,41 @@ pub async fn post_handler(
 }
 
 #[post("/mix/delayed", data = "<data>")]
-#[instrument(skip(data, state, note_repo))]
+#[instrument(skip(data, note_repo, task_queue))]
 pub async fn delayed_post_handler(
     data: Json<MixDelayedRequest>,
-    state: &RocketState<MixerState>,
     note_repo: &RocketState<Arc<dyn NoteRepository>>,
+    task_queue: &RocketState<Arc<AsyncQueue>>,
 ) -> Result<Json<MixDelayedResponse>, EndpointError> {
+    let request_id = Uuid::new_v4();
+    let scheduled_at = schedule_after(data.delayed_ms)?;
+
     let data = data.into_inner();
     let note = Note::try_from(&data)?;
-    let request_id = Uuid::new_v4();
-    info!("Schedule delayed mixing for note {:?} {request_id}", &note.id());
+    let note_id = &note.id();
+    let full_note = fill_note_record(note, data.account_id, scheduled_at, &request_id.to_string())?;
 
-    // note_repo
-    //     .add_note(note)
-    //     .await
-    //     .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
+    info!("Schedule delayed mixing for note {note_id:?} {request_id} at {scheduled_at}");
+
+    note_repo
+        .add_note(full_note)
+        .await?;
+    trace!("Note {note_id} added to storage as {request_id}");
+
+    let task = task::AsyncMixTask::new(&request_id.to_string(), scheduled_at);
+    task_queue.insert_task(&task).await?;
+    trace!("Task for note {note_id} added");
 
     Ok(Json(MixDelayedResponse { request_id: request_id.to_string() }))
+}
+
+// TODO: maybe we should use `trusted` source of time instead or additionally
+fn schedule_after(delay_ms: u64) -> anyhow::Result<DateTime<Utc>> {
+    let now: DateTime<Utc> = Utc::now();
+    let duration = TimeDelta::try_milliseconds(delay_ms as i64)
+        .with_context(|| "invalid milliseconds duration")?;
+    let scheduled_datetime = now + duration;
+    Ok(scheduled_datetime)
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -188,6 +210,30 @@ impl TryFrom<&MixDelayedRequest> for Note {
 
         Ok(note)
     }
+}
+
+fn fill_note_record(
+    note: Note,
+    account_id: String,
+    scheduled_date: DateTime<Utc>,
+    request_id: &str,
+) -> anyhow::Result<FullNote> {
+    use miden_objects::utils::{Serializable as _, ToHex as _};
+
+    use crate::db::models::notes as models;
+
+    let serialized_note = note.to_bytes().to_hex();
+    let serialized_note_id = note.id().to_string();
+
+    Ok(models::FullNote {
+        note_id: serialized_note_id,
+        note: serialized_note,
+        account_id,
+        // ! for now just leave status blank to prevent from execution by executor
+        status: models::NoteStatus::UNDEFINED,
+        scheduled_datetime: Some(scheduled_date.naive_utc()),
+        request_id: Some(request_id.to_owned()),
+    })
 }
 
 #[cfg(test)]

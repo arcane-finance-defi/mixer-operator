@@ -56,6 +56,8 @@ pub trait NoteRepository: Send + Sync + 'static {
 
     async fn get_note_by_id(&self, note_id: &str) -> Result<FullNote, NoteRepositoryError>;
 
+    async fn get_note_by_request_id(&self, req_id: &str) -> Result<FullNote, NoteRepositoryError>;
+
     async fn get_note_status_by_id(&self, note_id: &str)
     -> Result<NoteStatus, NoteRepositoryError>;
 
@@ -99,6 +101,25 @@ impl NoteRepository for DatabaseStorage {
             .interact(|conn| {
                 schema::notes::table
                     .filter(schema::notes::note_id.eq(find_note_id))
+                    .first::<FullNote>(conn)
+                    .optional()
+            })
+            .await
+            .map_err(NoteRepositoryErrorGeneric::new)?
+            .map_err(NoteRepositoryErrorGeneric::new)?;
+
+        Ok(result.ok_or_else(|| NoteRepositoryError::NotFound)?)
+    }
+
+    async fn get_note_by_request_id(&self, req_id: &str) -> Result<FullNote, NoteRepositoryError> {
+        let find_req_id = req_id.to_string();
+
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+
+        let result = conn
+            .interact(|conn| {
+                schema::notes::table
+                    .filter(schema::notes::request_id.eq(find_req_id))
                     .first::<FullNote>(conn)
                     .optional()
             })
