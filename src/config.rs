@@ -1,6 +1,4 @@
 use std::path::PathBuf;
-
-use fang::Task;
 use rocket::serde::Deserialize;
 
 const DEFAULT_PRIVATE_ACCOUNTS_DIR: &str = "./accounts_for_import";

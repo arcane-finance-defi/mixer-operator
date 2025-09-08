@@ -15,8 +15,8 @@ static DS: OnceCell<DatabaseStorage> = OnceCell::const_new();
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-pub fn set_pool_url(database_url: &str) -> anyhow::Result<()> {
-    DB_URL.set(database_url.to_string())?;
+pub fn set_pool_url(database_url: String) -> anyhow::Result<()> {
+    DB_URL.set(database_url)?;
     Ok(())
 }
 

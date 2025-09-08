@@ -14,10 +14,7 @@ use miden_objects::{
     utils::parse_hex_string_as_word,
 };
 use rocket::{
-    State as RocketState,
-    http::Status,
-    post, response,
-    serde::{Deserialize, Serialize, json::Json},
+    get, http::Status, post, response, serde::{json::Json, Deserialize, Serialize}, State as RocketState
 };
 use rocket_okapi::okapi::{schemars, schemars::JsonSchema};
 use tokio::sync::oneshot;
@@ -26,10 +23,10 @@ use uuid::Uuid;
 
 use super::error::EndpointError;
 use crate::{
-    db::models::{NoteRepository, notes::FullNote},
-    mixer::{MixClientRequest, client::MixerClientError},
+    db::models::{notes::{FullNote, NoteStatus}, NoteRepository},
+    mixer::{client::MixerClientError, MixClientRequest},
     state::MixerState,
-    task,
+    task::{self, mix::AsyncMixTask},
 };
 
 type MixResult = Result<String, MixerClientError>;
@@ -88,11 +85,25 @@ pub async fn delayed_post_handler(
         .await?;
     trace!("Note {note_id} added to storage as {request_id}");
 
-    let task = task::AsyncMixTask::new(&request_id.to_string(), scheduled_at);
+    let task = AsyncMixTask::new(&request_id.to_string(), scheduled_at);
     task_queue.insert_task(&task).await?;
-    trace!("Task for note {note_id} added");
+    trace!("Task for note {note_id} enqueued");
 
     Ok(Json(MixDelayedResponse { request_id: request_id.to_string() }))
+}
+
+#[get("/mix/delayed/status/<id>")]
+#[instrument(skip(note_repo))]
+pub async fn delayed_status_get_handler(
+    id: &str,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
+) -> Result<String, EndpointError> {
+    let note = note_repo.get_note_by_request_id(id).await?;
+    if note.status.contains(NoteStatus::TXED) {
+        Ok(String::from("TXED"))
+    } else {
+        Ok(String::from("PENDING"))
+    }
 }
 
 // TODO: maybe we should use `trusted` source of time instead or additionally

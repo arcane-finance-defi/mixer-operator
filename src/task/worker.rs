@@ -7,6 +7,10 @@ use fang::{
     run_migrations_postgres,
     serde::{Deserialize, Serialize},
 };
+use tokio::sync::OnceCell;
+use crate::mixer::MixerClientSender;
+
+static MIXER_SENDER: OnceCell<MixerClientSender> = OnceCell::const_new();
 
 fn do_migration(db_url: &str) -> anyhow::Result<()> {
     let mut connection = PgConnection::establish(db_url)?;
@@ -18,7 +22,7 @@ fn do_migration(db_url: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn prepare_task_queue(config: &crate::config::TaskQueue) -> anyhow::Result<(AsyncQueue)> {
+pub async fn prepare_task_queue(config: &crate::config::TaskQueue, mixer_sender: MixerClientSender) -> anyhow::Result<(AsyncQueue)> {
     do_migration(&config.db_url)?;
 
     let mut queue: AsyncQueue = AsyncQueue::builder()
@@ -43,5 +47,11 @@ pub async fn prepare_task_queue(config: &crate::config::TaskQueue) -> anyhow::Re
     pool.start().await;
     tracing::info!("Workers started");
 
+    MIXER_SENDER.set(mixer_sender)?;
+
     Ok(queue)
+}
+
+pub fn mixer_client_sender() -> anyhow::Result<&'static MixerClientSender> {
+    Ok(MIXER_SENDER.get().ok_or(anyhow::anyhow!("no mixer sender initialized in once cell, it's a bug!"))?)
 }

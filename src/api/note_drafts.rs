@@ -130,7 +130,7 @@ impl TryFrom<MixDraftRequest> for crate::db::models::notes::FullNote {
     fn try_from(req: MixDraftRequest) -> Result<Self, Self::Error> {
         // use miden_objects::block::BlockNumber;
         use miden_objects::{
-            note::{Note as OnchainNote, NoteFile},
+            note::{Note as OnchainNote},
             utils::{Serializable as _, ToHex as _},
         };
 

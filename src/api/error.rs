@@ -69,12 +69,6 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
     }
 }
 
-impl From<fang::FangError> for EndpointError {
-    fn from(ferr: fang::FangError) -> Self {
-        EndpointError::TaskQueue(ferr.description)
-    }
-}
-
 impl From<fang::AsyncQueueError> for EndpointError {
     fn from(qerr: fang::AsyncQueueError) -> Self {
         tracing::error!("AsyncQueueError occured: {qerr:#?}");

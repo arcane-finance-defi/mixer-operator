@@ -4,12 +4,7 @@ use anyhow::Context as _;
 use fang::AsyncQueue;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use mixer_operator::{
-    PACKAGE, VERSION, api,
-    config::Config,
-    db, executor, logging,
-    mixer::{MixClientRequest, event_loop},
-    state::MixerState,
-    worker::prepare_task_queue,
+    api, config::Config, db, executor, logging, mixer::{event_loop, MixClientRequest}, state::MixerState, task::worker::prepare_task_queue, PACKAGE, VERSION
 };
 use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
@@ -53,7 +48,7 @@ fn rocket(
         .mount(
             "/",
             rocket::routes![
-                api::mix::post_handler, // Mounting /mix
+                api::mix::post_handler, 
             ],
         )
         // new api
@@ -62,6 +57,7 @@ fn rocket(
             rocket::routes![
                 api::mix::post_handler,
                 api::mix::delayed_post_handler,
+                api::mix::delayed_status_get_handler,
                 api::note_drafts::post_new_handler,
                 api::note_drafts::get_status_handler,
                 // api::note_drafts::get_by_id_handler,
@@ -87,6 +83,8 @@ async fn main() -> anyhow::Result<ExitCode> {
     logging::init();
     info!("Starting {PACKAGE}, version {VERSION}");
 
+    let cancellation_token = CancellationToken::new();
+
     let config = rocket::Config::figment()
         .extract::<Config>()
         .context("reading figment provided config")?;
@@ -94,39 +92,36 @@ async fn main() -> anyhow::Result<ExitCode> {
     // Need initialize db pool to use it by db::DatabaseStorage::storage()
     db::set_pool_url(config.db().url)?;
 
-    // Task queue
-    let task_queue = prepare_task_queue(config.task_queue())
-        .await
-        .with_context(|| "prepare task queue")?;
-    let task_queue = Arc::new(task_queue);
-
-    // Prepare sidecar futures
-    let cancellation_token = CancellationToken::new();
-    let mut handles = FuturesUnordered::new();
-
-    let (sender, receiver) = mpsc::channel::<MixClientRequest>(config.client_count() as usize);
-
     // Event loop in separete async runtime for Miden client (not Send'able)
-    let mixer_token = cancellation_token.clone();
+    let (sender, receiver) = mpsc::channel::<MixClientRequest>(config.client_count() as usize);
     let mixer_worker = std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("async runtime");
 
-        event_loop(config, receiver, runtime, mixer_token);
+        event_loop(config, receiver, runtime, cancellation_token.clone());
     });
+
+    // Task queue
+    let task_queue = prepare_task_queue(config.task_queue(), sender.clone())
+        .await
+        .with_context(|| "prepare task queue")?;
+    let task_queue = Arc::new(task_queue);
+
+    // Prepare sidecar futures
+    let mut handles = FuturesUnordered::new();
 
     // Note executor task
     handles.push(executor::spawn(
         sender.clone(),
-        db::DatabaseStorage::storage(),
+        db::DatabaseStorage::storage().await.expect("executor storage initialized"),
         cancellation_token.clone(),
     ));
 
     // Main event loop for API launched by rocket
     rocket(
-        MixerState::new(sender),
+        MixerState::new(sender.clone()),
         Arc::new(db::DatabaseStorage::storage()),
         task_queue.clone(),
     )

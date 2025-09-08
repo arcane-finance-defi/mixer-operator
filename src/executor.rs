@@ -29,10 +29,10 @@ struct NoteExecutor {
 
 pub fn spawn(
     client: MixerClientSender,
-    storage: impl NoteRepository,
+    storage: Box<dyn NoteRepository>,
     cancellation_token: CancellationToken,
 ) -> NamedJoinHandle {
-    let executor = NoteExecutor { client, storage: Box::new(storage) };
+    let executor = NoteExecutor { client, storage };
 
     crate::named_future::spawn_named("note executor".into(), executor.run(cancellation_token))
 }
@@ -82,7 +82,8 @@ impl NoteExecutor {
 
             let faucet_id = AccountId::from_hex(&account_id)?;
 
-            join_set.spawn(mix(self.client.clone(), note, faucet_id));
+            
+            join_set.spawn(crate::task::mix::mix(self.client.clone(), note, faucet_id));
         }
 
         tracing::info!("Joining notes batch");
@@ -92,7 +93,7 @@ impl NoteExecutor {
             match r {
                 Ok((note_id, tx_id)) => {
                     tracing::info!("Save state note_id={note_id} tx_id={tx_id}");
-                    if let Err(err) = self.set_note_txed(note_id).await {
+                    if let Err(err) = crate::task::mix::set_note_txed(self.storage.as_ref(), note_id).await {
                         tracing::error!("Failed to save state because {err:#?}");
                     } else {
                         tracing::info!("Success");
@@ -115,37 +116,4 @@ impl NoteExecutor {
 
         Ok(notes)
     }
-
-    #[tracing::instrument(skip(self))]
-    async fn set_note_txed(&self, note_id: NoteId) -> anyhow::Result<()> {
-        match self
-            .storage
-            .update_note_status_by_id(&note_id.to_string(), NoteStatus::TXED)
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(err) => bail!("update notes status error {err:#?}"),
-        }
-    }
-}
-
-#[tracing::instrument(skip(client, note))]
-async fn mix(
-    client: MixerClientSender,
-    note: Note,
-    account_id: AccountId,
-) -> anyhow::Result<(NoteId, String)> {
-    let note_id = note.id();
-    tracing::info!("Executor trying to mix {note_id}");
-
-    let (request, response) = oneshot::channel::<Result<String, MixerClientError>>();
-
-    client
-        .send(MixClientRequest::Mix { note, account_id, response_sink: request })
-        .await?;
-
-    // await for result of mixing
-    let tx_id = response.await?.with_context(|| format!("internal mixer error for {note_id}"))?;
-
-    Ok((note_id, tx_id))
 }
