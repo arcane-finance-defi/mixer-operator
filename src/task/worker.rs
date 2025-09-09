@@ -51,7 +51,7 @@ pub async fn prepare_task_queue(
 }
 
 pub fn mixer_client_sender() -> anyhow::Result<&'static MixerClientSender> {
-    Ok(MIXER_SENDER
+    MIXER_SENDER
         .get()
-        .ok_or(anyhow::anyhow!("no mixer sender initialized in once cell, it's a bug!"))?)
+        .ok_or(anyhow::anyhow!("no mixer sender initialized in once cell, it's a bug!"))
 }
