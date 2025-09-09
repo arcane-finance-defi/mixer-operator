@@ -37,7 +37,7 @@ impl AsyncMixTask {
 #[async_trait]
 impl AsyncRunnable for AsyncMixTask {
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
-        let db = DatabaseStorage::storage().await.map_err(AsyncMixTaskError)?;
+        let db = DatabaseStorage::note_storage().await.map_err(AsyncMixTaskError)?;
 
         // task_id is effectively request_id in the storage
         let note_record = db.get_note_by_request_id(&self.task_id)

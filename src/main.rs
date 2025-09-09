@@ -115,14 +115,14 @@ async fn main() -> anyhow::Result<ExitCode> {
     // Note executor task
     handles.push(executor::spawn(
         sender.clone(),
-        db::DatabaseStorage::storage().await.expect("executor storage initialized"),
+        *db::DatabaseStorage::note_storage().await.expect("executor storage initialized"),
         cancellation_token.clone(),
     ));
 
     // Main event loop for API launched by rocket
     rocket(
         MixerState::new(sender.clone()),
-        Arc::new(db::DatabaseStorage::storage()),
+        Arc::new(db::DatabaseStorage::note_storage()),
         task_queue.clone(),
     )
     .launch()

@@ -51,7 +51,7 @@ impl NoteRepositoryErrorGeneric {
 }
 
 #[async_trait::async_trait]
-pub trait NoteRepository: Send + Sync + 'static {
+pub trait NoteRepository: Send + Sync {
     async fn add_note(&self, note: notes::FullNote) -> Result<(), NoteRepositoryError>;
 
     async fn get_note_by_id(&self, note_id: &str) -> Result<FullNote, NoteRepositoryError>;
