@@ -95,6 +95,10 @@ async fn main() -> anyhow::Result<ExitCode> {
         .extract::<Config>()
         .context("reading figment provided config")?;
 
+    if cfg!(debug_assertions) {
+        tracing::info!("Loaded config:\n{config:#?}");
+    }
+
     let tq_config = config.task_queue();
     let db_config = config.db();
     let client_config = config.client();

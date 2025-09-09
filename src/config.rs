@@ -4,7 +4,7 @@ use rocket::serde::Deserialize;
 
 const DEFAULT_PRIVATE_ACCOUNTS_DIR: &str = "./accounts_for_import";
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct Config {
     debug: Option<bool>,
@@ -31,7 +31,7 @@ impl Config {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct MidenClient {
     pub rpc_url: String,
@@ -63,13 +63,13 @@ impl MidenClient {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct Database {
     pub url: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct TaskQueue {
     pub db_url: String,

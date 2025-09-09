@@ -1,9 +1,17 @@
 [default]
+debug = true
+
+[default.client]
 rpc_url = "https://rpc.testnet.miden.io"
 rpc_timeout_ms = 10000
-client_count = 100
+internal_queue_size = 100
 public_account_ids = "0x63c9d7af451fda2000fa06ce0bdefd"
 port = 8001
-debug = true
+
 [default.db]
 url = "notes.db"
+
+[default.tq]
+db_url = "postgresql://login:password@domain.com:9000"
+workers_max = 1 
+ 
