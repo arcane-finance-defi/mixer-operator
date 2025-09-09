@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use chrono::{DateTime, Duration, TimeDelta, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use fang::{AsyncQueue, AsyncQueueable};
 use miden_bridge::{
     notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
@@ -26,7 +26,7 @@ use crate::{
     db::models::{notes::{FullNote, NoteStatus}, NoteRepository},
     mixer::{client::MixerClientError, MixClientRequest},
     state::MixerState,
-    task::{self, mix::AsyncMixTask},
+    task::{mix::AsyncMixTask},
 };
 
 type MixResult = Result<String, MixerClientError>;

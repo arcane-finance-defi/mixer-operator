@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use deadpool_diesel::sqlite::{Manager, Pool, Runtime};
 use diesel::SqliteConnection;
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -12,7 +14,7 @@ pub type DbPool = Pool;
 
 // NB: Tokio's OnceCell is thread-safe
 static DB_URL: OnceCell<String> = OnceCell::const_new();
-static NS: OnceCell<&'static dyn models::NoteRepository> = OnceCell::const_new();
+static NS: OnceCell<Arc<dyn models::NoteRepository>> = OnceCell::const_new();
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -42,14 +44,14 @@ impl DatabaseStorage {
         Ok(DatabaseStorage { pool })
     }
 
-    pub async fn note_storage() -> anyhow::Result<&'static dyn NoteRepository> {
-        // we have to leak() here to obtain a 'static reference for trait object
-        NS.get_or_try_init(async move || {
+    pub async fn note_storage() -> anyhow::Result<Arc<dyn NoteRepository>> {
+        NS.get_or_try_init(async || {
             let mut db = DatabaseStorage::new().await?;
             db.run_migrations().await?;
-            Ok(Box::leak(Box::new(db)) as &'static dyn NoteRepository)
+            Ok(Arc::new(db) as Arc<dyn NoteRepository>)
         })
-        .await.copied()
+        .await
+        .cloned()
     }
 
     async fn run_migrations(&mut self) -> anyhow::Result<()> {

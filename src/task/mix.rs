@@ -1,17 +1,15 @@
 use anyhow::Context;
 use chrono::{DateTime, Utc};
-use diesel::{Connection as _, PgConnection, connection};
 use fang::{
-    AsyncQueue, AsyncRunnable, FangError, Scheduled, async_trait,
+    AsyncRunnable, FangError, Scheduled, async_trait,
     asynk::async_queue::AsyncQueueable,
-    run_migrations_postgres,
     serde::{Deserialize, Serialize},
 };
 use miden_objects::note::Note;
 use miden_objects::account::AccountId;
 use miden_objects::utils::Deserializable;
 use miden_objects::note::NoteId;
-use tokio::sync::{oneshot, OnceCell};
+use tokio::sync::{oneshot};
 
 use crate::{db::{models::{notes::{FullNote, NoteStatus}, NoteRepository}, DatabaseStorage}, mixer::{client::MixerClientError, MixClientRequest, MixerClientSender}, task::worker::mixer_client_sender};
 
@@ -66,7 +64,7 @@ impl AsyncRunnable for AsyncMixTask {
             .map_err(AsyncMixTaskError)?;
         tracing::info!("Completed mix for note_id={note_id} tx_id={tx_id}");
 
-        match set_note_txed(db, note_id).await {
+        match set_note_txed(&*db, note_id).await {
             Ok(_) => {
                 tracing::info!("Successfully save state for txed note note_id={note_id} tx_id={tx_id}");
                 Ok(())

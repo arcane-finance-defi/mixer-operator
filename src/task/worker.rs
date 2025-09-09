@@ -1,12 +1,11 @@
 use anyhow::Context;
-use chrono::{DateTime, Utc};
-use diesel::{Connection as _, PgConnection, connection};
+use diesel::{Connection as _, PgConnection};
 use fang::{
-    AsyncQueue, AsyncRunnable, FangError, Scheduled, async_trait,
-    asynk::{async_queue::AsyncQueueable, async_worker_pool::AsyncWorkerPool},
+    AsyncQueue,
+    asynk::{async_worker_pool::AsyncWorkerPool},
     run_migrations_postgres,
-    serde::{Deserialize, Serialize},
 };
+
 use tokio::sync::OnceCell;
 use crate::mixer::MixerClientSender;
 
@@ -22,7 +21,7 @@ fn do_migration(db_url: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn prepare_task_queue(config: &crate::config::TaskQueue, mixer_sender: MixerClientSender) -> anyhow::Result<(AsyncQueue)> {
+pub async fn prepare_task_queue(config: &crate::config::TaskQueue, mixer_sender: MixerClientSender) -> anyhow::Result<AsyncQueue> {
     do_migration(&config.db_url)?;
 
     let mut queue: AsyncQueue = AsyncQueue::builder()

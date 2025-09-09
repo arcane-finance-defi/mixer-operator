@@ -4,13 +4,15 @@
 //! - Create JoinSet of exectution tasks and wait async client to finish them
 //! - Collect results of execution async
 
+use std::sync::Arc;
+
 use anyhow::{Context, bail};
 use miden_objects::{
     account::AccountId,
-    note::{Note, NoteId},
+    note::{Note},
     utils::Deserializable,
 };
-use tokio::{sync::oneshot, task::JoinSet};
+use tokio::{task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -18,18 +20,18 @@ use crate::{
         NoteRepository,
         notes::{FullNote, NoteStatus},
     },
-    mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
+    mixer::{MixerClientSender},
     named_future::NamedJoinHandle,
 };
 
 struct NoteExecutor {
     client: MixerClientSender,
-    storage: Box<dyn NoteRepository>,
+    storage: Arc<dyn NoteRepository>,
 }
 
 pub fn spawn(
     client: MixerClientSender,
-    storage: Box<dyn NoteRepository>,
+    storage: Arc<dyn NoteRepository>,
     cancellation_token: CancellationToken,
 ) -> NamedJoinHandle {
     let executor = NoteExecutor { client, storage };
@@ -75,11 +77,10 @@ impl NoteExecutor {
             let FullNote { note_id, note, account_id, .. } = note_record;
 
             // TODO: should be unified methods to store and load serialized notes without client
-            let note_bytes =
-                hex::decode(note).context("decoding from hex string note {note_id}")?;
+            let note_bytes = hex::decode(note)
+                .with_context(|| format!("decoding from hex string note {note_id}"))?;
             let note = Note::read_from_bytes(note_bytes.as_slice())
-                .context("reading note from bytes for {note_id}")?;
-
+                .with_context(|| format!("reading note from bytes for {note_id}"))?;
             let faucet_id = AccountId::from_hex(&account_id)?;
 
             

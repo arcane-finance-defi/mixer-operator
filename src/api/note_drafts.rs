@@ -101,7 +101,7 @@ pub async fn get_status_handler(
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
-struct MixDraftRequest {
+pub struct MixDraftRequest {
     dest_chain_id: u64,
     dest_address: String,
     serial_num_hex: String,

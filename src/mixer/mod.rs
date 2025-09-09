@@ -9,7 +9,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    config::Config,
+    config::{MidenClient as MidenClientConfig},
     mixer::client::{MixerClient, MixerClientError},
 };
 
@@ -34,7 +34,8 @@ pub enum MixClientRequest {
 }
 
 pub fn event_loop(
-    config: Config,
+    config: MidenClientConfig,
+    debug: bool,
     mut receiver: MixerClientReceiver,
     runtime: Runtime,
     cancellation_token: CancellationToken,
@@ -44,7 +45,7 @@ pub fn event_loop(
             config.rpc_url().as_str(),
             config.rpc_timeout_ms(),
             None,
-            config.debug(),
+            debug,
         ))
         .unwrap();
 
