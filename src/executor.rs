@@ -7,12 +7,8 @@
 use std::sync::Arc;
 
 use anyhow::{Context, bail};
-use miden_objects::{
-    account::AccountId,
-    note::{Note},
-    utils::Deserializable,
-};
-use tokio::{task::JoinSet};
+use miden_objects::{account::AccountId, note::Note, utils::Deserializable};
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -20,7 +16,7 @@ use crate::{
         NoteRepository,
         notes::{FullNote, NoteStatus},
     },
-    mixer::{MixerClientSender},
+    mixer::MixerClientSender,
     named_future::NamedJoinHandle,
 };
 
@@ -83,7 +79,6 @@ impl NoteExecutor {
                 .with_context(|| format!("reading note from bytes for {note_id}"))?;
             let faucet_id = AccountId::from_hex(&account_id)?;
 
-            
             join_set.spawn(crate::task::mix::mix(self.client.clone(), note, faucet_id));
         }
 
@@ -94,7 +89,9 @@ impl NoteExecutor {
             match r {
                 Ok((note_id, tx_id)) => {
                     tracing::info!("Save state note_id={note_id} tx_id={tx_id}");
-                    if let Err(err) = crate::task::mix::set_note_txed(self.storage.as_ref(), note_id).await {
+                    if let Err(err) =
+                        crate::task::mix::set_note_txed(self.storage.as_ref(), note_id).await
+                    {
                         tracing::error!("Failed to save state because {err:#?}");
                     } else {
                         tracing::info!("Success");

@@ -14,7 +14,10 @@ use miden_objects::{
     utils::parse_hex_string_as_word,
 };
 use rocket::{
-    get, http::Status, post, response, serde::{json::Json, Deserialize, Serialize}, State as RocketState
+    State as RocketState, get,
+    http::Status,
+    post, response,
+    serde::{Deserialize, Serialize, json::Json},
 };
 use rocket_okapi::okapi::{schemars, schemars::JsonSchema};
 use tokio::sync::oneshot;
@@ -23,10 +26,13 @@ use uuid::Uuid;
 
 use super::error::EndpointError;
 use crate::{
-    db::models::{notes::{FullNote, NoteStatus}, NoteRepository},
-    mixer::{client::MixerClientError, MixClientRequest},
+    db::models::{
+        NoteRepository,
+        notes::{FullNote, NoteStatus},
+    },
+    mixer::{MixClientRequest, client::MixerClientError},
     state::MixerState,
-    task::{mix::AsyncMixTask},
+    task::mix::AsyncMixTask,
 };
 
 type MixResult = Result<String, MixerClientError>;
@@ -80,9 +86,7 @@ pub async fn delayed_post_handler(
 
     info!("Schedule delayed mixing for note {note_id:?} {request_id} at {scheduled_at}");
 
-    note_repo
-        .add_note(full_note)
-        .await?;
+    note_repo.add_note(full_note).await?;
     trace!("Note {note_id} added to storage as {request_id}");
 
     let task = AsyncMixTask::new(&request_id.to_string(), scheduled_at);

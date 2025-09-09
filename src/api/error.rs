@@ -8,7 +8,7 @@ use rocket::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{mixer::{client::MixerClientError, MixClientRequest}};
+use crate::mixer::{MixClientRequest, client::MixerClientError};
 
 #[derive(Error, Debug)]
 pub enum EndpointError {

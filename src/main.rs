@@ -4,7 +4,12 @@ use anyhow::Context as _;
 use fang::AsyncQueue;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use mixer_operator::{
-    api, config::Config, db, executor, logging, mixer::{event_loop, MixClientRequest}, state::MixerState, task::worker::prepare_task_queue, PACKAGE, VERSION
+    PACKAGE, VERSION, api,
+    config::Config,
+    db, executor, logging,
+    mixer::{MixClientRequest, event_loop},
+    state::MixerState,
+    task::worker::prepare_task_queue,
 };
 use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
@@ -48,7 +53,7 @@ fn rocket(
         .mount(
             "/",
             rocket::routes![
-                api::mix::post_handler, 
+                api::mix::post_handler,
             ],
         )
         // new api
@@ -98,9 +103,9 @@ async fn main() -> anyhow::Result<ExitCode> {
     // Need initialize db pool to use it by db::DatabaseStorage::storage()
     db::set_pool_url(db_config.url.clone())?;
 
-    
     // Channel to interact with internal Miden client
-    let (sender, receiver) = mpsc::channel::<MixClientRequest>(client_config.internal_queue_size() as usize);
+    let (sender, receiver) =
+        mpsc::channel::<MixClientRequest>(client_config.internal_queue_size() as usize);
 
     let stop_token = cancellation_token.clone();
     let mixer_config = client_config.clone();
@@ -127,21 +132,13 @@ async fn main() -> anyhow::Result<ExitCode> {
     // Note executor task
     let storage = db::DatabaseStorage::note_storage().await.expect("executor storage initialized");
     let stop_token = cancellation_token.clone();
-    handles.push(executor::spawn(
-        sender.clone(),
-        storage,
-        stop_token,
-    ));
+    handles.push(executor::spawn(sender.clone(), storage, stop_token));
 
     // Main event loop for API launched by rocket
     let storage = db::DatabaseStorage::note_storage().await.expect("rocket storage initialized");
-    rocket(
-        MixerState::new(sender.clone()),
-        storage,
-        task_queue.clone(),
-    )
-    .launch()
-    .await?;
+    rocket(MixerState::new(sender.clone()), storage, task_queue.clone())
+        .launch()
+        .await?;
 
     // At this point the server shut down (launch result is Ok)
     // So do graceful shutdown of other features

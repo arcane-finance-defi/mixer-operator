@@ -5,13 +5,24 @@ use fang::{
     asynk::async_queue::AsyncQueueable,
     serde::{Deserialize, Serialize},
 };
-use miden_objects::note::Note;
-use miden_objects::account::AccountId;
-use miden_objects::utils::Deserializable;
-use miden_objects::note::NoteId;
-use tokio::sync::{oneshot};
+use miden_objects::{
+    account::AccountId,
+    note::{Note, NoteId},
+    utils::Deserializable,
+};
+use tokio::sync::oneshot;
 
-use crate::{db::{models::{notes::{FullNote, NoteStatus}, NoteRepository}, DatabaseStorage}, mixer::{client::MixerClientError, MixClientRequest, MixerClientSender}, task::worker::mixer_client_sender};
+use crate::{
+    db::{
+        DatabaseStorage,
+        models::{
+            NoteRepository,
+            notes::{FullNote, NoteStatus},
+        },
+    },
+    mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
+    task::worker::mixer_client_sender,
+};
 
 struct AsyncMixTaskError(anyhow::Error);
 
@@ -38,7 +49,8 @@ impl AsyncRunnable for AsyncMixTask {
         let db = DatabaseStorage::note_storage().await.map_err(AsyncMixTaskError)?;
 
         // task_id is effectively request_id in the storage
-        let note_record = db.get_note_by_request_id(&self.task_id)
+        let note_record = db
+            .get_note_by_request_id(&self.task_id)
             .await
             .map_err(|e| AsyncMixTaskError(anyhow::anyhow!("note repo {}", e.to_string())))?;
 
@@ -53,12 +65,11 @@ impl AsyncRunnable for AsyncMixTask {
             .map_err(AsyncMixTaskError)?;
         let faucet_id = AccountId::from_hex(&account_id)
             .map_err(|e| AsyncMixTaskError(anyhow::anyhow!("{e}")))?;
-        
+
         tracing::trace!("Obtaining mixer client sender");
         let client = mixer_client_sender().map_err(AsyncMixTaskError)?;
 
-        let (note_id, tx_id) = 
-            mix(client.clone(), note, faucet_id)
+        let (note_id, tx_id) = mix(client.clone(), note, faucet_id)
             .await
             .with_context(|| "async mix task worker is mixing note {}")
             .map_err(AsyncMixTaskError)?;
@@ -66,13 +77,17 @@ impl AsyncRunnable for AsyncMixTask {
 
         match set_note_txed(&*db, note_id).await {
             Ok(_) => {
-                tracing::info!("Successfully save state for txed note note_id={note_id} tx_id={tx_id}");
+                tracing::info!(
+                    "Successfully save state for txed note note_id={note_id} tx_id={tx_id}"
+                );
                 Ok(())
-            }
-            Err(err) => { 
-                tracing::error!("Failed to save txed note note_id={note_id} tx_id={tx_id} because {err:#?}");
+            },
+            Err(err) => {
+                tracing::error!(
+                    "Failed to save txed note note_id={note_id} tx_id={tx_id} because {err:#?}"
+                );
                 Err(AsyncMixTaskError(err).into())
-            }
+            },
         }
     }
     // this func is optional
@@ -136,10 +151,7 @@ pub async fn mix(
 
 #[tracing::instrument(skip(storage))]
 pub async fn set_note_txed(storage: &dyn NoteRepository, note_id: NoteId) -> anyhow::Result<()> {
-    match storage
-        .update_note_status_by_id(&note_id.to_string(), NoteStatus::TXED)
-        .await
-    {
+    match storage.update_note_status_by_id(&note_id.to_string(), NoteStatus::TXED).await {
         Ok(_) => Ok(()),
         Err(err) => anyhow::bail!("update notes status error {err:#?}"),
     }

@@ -9,7 +9,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    config::{MidenClient as MidenClientConfig},
+    config::MidenClient as MidenClientConfig,
     mixer::client::{MixerClient, MixerClientError},
 };
 
