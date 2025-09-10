@@ -167,9 +167,11 @@ impl TryFrom<&MixDraftRequest> for miden_objects::note::Note {
         let faucet_id = AccountId::from_hex(&value.account_id)?;
         let note = new_crosschain_note(
             parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?,
+                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
+                .into(),
             parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?,
+                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
+                .into(),
             Felt::new(value.dest_chain_id),
             evm_address_to_felts(&value.dest_address)?,
             None,

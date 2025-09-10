@@ -11,6 +11,8 @@ use miden_client::{
     store::{Store, sqlite_store::SqliteStore},
     transaction::{TransactionRequestBuilder, TransactionRequestError},
 };
+use miden_client::auth::BasicAuthenticator;
+use miden_client::rpc::{NodeRpcClient, RpcError};
 use miden_objects::{
     AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, NoteError, Word, ZERO,
     account::{AccountFile, AccountId},
@@ -24,6 +26,7 @@ use miden_objects::{
     utils::{Deserializable, DeserializationError},
 };
 use rand::{Rng, rng};
+use rand::rngs::StdRng;
 use thiserror::Error;
 use tokio::fs::read;
 use tracing::info;
@@ -31,7 +34,8 @@ use tracing::info;
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
 pub struct MixerClient {
-    client: MidenClient,
+    client: MidenClient<BasicAuthenticator<StdRng>>,
+    rpc: Arc<dyn NodeRpcClient>
 }
 
 #[derive(Error, Debug)]
@@ -56,6 +60,8 @@ pub enum MixerClientError {
     InternalDeserializationError(#[from] DeserializationError),
     #[error(transparent)]
     AccountIdParsingError(#[from] AccountIdError),
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
 }
 
 impl MixerClient {
@@ -76,17 +82,21 @@ impl MixerClient {
         let mut rng = rng();
         let coin_seed: [u64; 4] = rng.random();
 
-        let rng = RpoRandomCoin::new(coin_seed.map(Felt::new));
+        let rng = RpoRandomCoin::new(Word::from(coin_seed.map(Felt::new)));
+
+        let rpc = Arc::new(TonicRpcClient::new(
+            &Endpoint::try_from(rpc_endpoint)
+                .map_err(MixerClientError::MalformedEndpointUrlError)?,
+            rpc_timeout_ms,
+        ));
 
         let client = MidenClient::new(
-            Arc::new(TonicRpcClient::new(
-                &Endpoint::try_from(rpc_endpoint)
-                    .map_err(MixerClientError::MalformedEndpointUrlError)?,
-                rpc_timeout_ms,
-            )),
+            rpc.clone(),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
-            Arc::new(()),
+            Some(Arc::new(BasicAuthenticator::<StdRng>::new(
+                &[]
+            ))),
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
@@ -96,10 +106,9 @@ impl MixerClient {
             .unwrap(),
             None,
             None,
-            "".to_string(),
-        );
+        ).await?;
 
-        Ok(Self { client })
+        Ok(Self { client, rpc })
     }
 
     pub async fn initialize(
@@ -154,7 +163,7 @@ impl MixerClient {
         note: Note,
         account_id: AccountId,
     ) -> Result<String, MixerClientError> {
-        if note.recipient().script().root() == croschain().root() {
+        if note.recipient().script().root() == Word::from(croschain().root()) {
             Ok(())
         } else {
             Err(MixerClientError::WrongNoteScriptRootError())
@@ -167,13 +176,11 @@ impl MixerClient {
         self.client.sync_state().await?;
 
         // obtain a cryptographic proof that note exists within the blockchain's state
-        let proof = self
-            .client
-            .get_note_inclusion_proof(note.id())
-            .await?
-            .ok_or(MixerClientError::InvalidNoteTypeError())?;
+        let fetched_note = self
+            .rpc.get_note_by_id(note.id())
+            .await?;
 
-        let note_file = NoteFile::NoteWithProof(note.clone(), proof);
+        let note_file = NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
 
         let note_id = self.client.import_note(note_file).await?;
 
@@ -196,7 +203,6 @@ impl MixerClient {
                 account_id,
                 TransactionRequestBuilder::new()
                     .own_output_notes(vec![expected_bridge_note])
-                    .with_empty_script(true)
                     .build_consume_notes(vec![note_id])?,
             )
             .await?;
@@ -215,7 +221,7 @@ impl MixerClient {
     pub async fn is_note_onchain(&mut self, note_id: NoteId) -> Result<bool, MixerClientError> {
         self.client.sync_state().await?;
 
-        Ok(self.client.get_note_inclusion_proof(note_id).await?.is_some())
+        Ok(self.rpc.get_note_by_id(note_id).await.is_ok())
     }
 }
 
@@ -253,7 +259,7 @@ fn get_public_bridge_output_note(
         ZERO,
     )?;
 
-    let serial_num = Word::try_from(input_note.inputs().values()[..4].to_vec())
+    let serial_num = Word::try_from(&input_note.inputs().values()[..4])
         .map_err(|_| PublicNoteConstructorError::MalformedSerialNumber())?;
 
     let inputs = NoteInputs::new(
