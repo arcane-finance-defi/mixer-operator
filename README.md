@@ -4,7 +4,11 @@ Mixer operator is rust based offchain service that generates the consume-note tr
 
 ## API
 
-The service provides singe endpoint `POST /mix` that generates tx from the note and account and returns tx id
+The service provides:
+
+* `POST /api/v1/mix` endpoint that generates tx from the note and account and returns `tx_id`
+* `POST /api/v1/mix/delayed` endpoint that put note execution request into the queue to be excuted later with given delay in milliseconds and return `task_id`
+* `POST /api/v1/mix/delayed/status/<task_id>` endpoint that returns note execution status for given `task_id`
 
 ## Configuration
 
@@ -16,9 +20,11 @@ ___./Rocket.toml___ contains the configs for the service
 * ___rpc_timeout_ms___ miden rpc request timeout in milliseconds
 * ___public_account_ids___ comma separated list of public faucet accounts on miden chain to work with
 
+* ___tq.db_url___ connection URL of task queue database
+* ___db.url___ URL of local notes storage
 ## Prerequisites
 
-* rust v1.88.0
+* rust v1.89.0
 
 ## How to run
 
@@ -37,6 +43,9 @@ cargo run --release
 5. Start the service `cd ./mixer && nohup ./mixer-operator &`
 
 ## How to test
+
+* To run unit-tests only run `cargo test --lib`
+* To run with integration tests run `cargo test`. Do not forget to set [environment variables](###test-prerequisites)
 
 ### Test prerequisites
 
