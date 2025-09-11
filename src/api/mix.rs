@@ -163,6 +163,7 @@ pub struct ErrorResponse {
 
 // TODO: to be replaced with EndpointError and moved out to error.rs module
 // https://stuarth.github.io/rocket-error-handling/
+#[allow(clippy::match_single_binding)]
 impl<'r, 'o: 'r> response::Responder<'r, 'o> for ErrorResponse {
     fn respond_to(self, req: &'r rocket::Request<'_>) -> response::Result<'o> {
         // log `self` to your favored error tracker, e.g.

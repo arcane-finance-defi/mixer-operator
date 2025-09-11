@@ -163,7 +163,7 @@ impl MixerClient {
         note: Note,
         account_id: AccountId,
     ) -> Result<String, MixerClientError> {
-        if note.recipient().script().root() == Word::from(croschain().root()) {
+        if note.recipient().script().root() == croschain().root() {
             Ok(())
         } else {
             Err(MixerClientError::WrongNoteScriptRootError())

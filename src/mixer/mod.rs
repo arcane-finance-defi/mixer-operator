@@ -21,6 +21,7 @@ pub type MixerClientReceiver = mpsc::Receiver<MixClientRequest>;
 
 type MixerClientResponse<T> = oneshot::Sender<Result<T, MixerClientError>>;
 
+#[allow(clippy::large_enum_variant)]
 pub enum MixClientRequest {
     Mix {
         note: Note,
