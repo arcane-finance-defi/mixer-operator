@@ -13,6 +13,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN --mount=type=ssh cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY . .
+RUN apk add --no-cache postgresql-dev postgresql-libs libpq-dev
 RUN cargo build --release --bin mixer-operator
 
 # We do not need the Rust toolchain to run the binary!
