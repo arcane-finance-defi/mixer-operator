@@ -1,0 +1,29 @@
+services:
+  mixer-operator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      ssh:
+        - default
+    environment:
+      ROCKET_ENV: development
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - db
+
+  db:
+    image: postgres:9.6-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+
