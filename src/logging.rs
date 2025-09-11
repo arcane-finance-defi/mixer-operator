@@ -8,7 +8,8 @@ pub fn init() {
     // Set up the tracing subscriber to log to stdout
     let subscriber = fmt::Subscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
-        .with_span_events(fmt::format::FmtSpan::ACTIVE)
+        .with_span_events(fmt::format::FmtSpan::NEW)
+        .with_ansi(true) // for compatibility with Rocket
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)

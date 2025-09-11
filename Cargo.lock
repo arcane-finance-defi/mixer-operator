@@ -1006,7 +1006,7 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 [[package]]
 name = "fang"
 version = "0.11.0-rc1"
-source = "git+https://github.com/ayrat555/fang.git?rev=31a5ac64f86448e5ab736eaad227c366d4aece0a#31a5ac64f86448e5ab736eaad227c366d4aece0a"
+source = "git+ssh://git@github.com/ayrat555/fang.git?rev=31a5ac64f86448e5ab736eaad227c366d4aece0a#31a5ac64f86448e5ab736eaad227c366d4aece0a"
 dependencies = [
  "async-recursion",
  "async-trait",

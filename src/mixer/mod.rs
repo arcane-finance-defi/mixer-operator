@@ -1,3 +1,4 @@
+use std::time::Duration;
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteId},
@@ -9,8 +10,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    config::MidenClient as MidenClientConfig,
-    mixer::client::{MixerClient, MixerClientError},
+    config::MidenClient as MidenClientConfig, mixer::client::{MixerClient, MixerClientError}
 };
 
 pub mod client;
@@ -60,7 +60,15 @@ pub fn event_loop(
             break;
         }
 
-        let request = runtime.block_on(receiver.recv());
+        // TODO: clean and config
+        let request = if let Ok(request) = runtime.block_on(async {
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv()).await
+        }) {
+            request
+        } else {
+            tracing::debug!("No work for now");
+            continue;
+        };
 
         match request {
             Some(MixClientRequest::Mix { note, account_id, response_sink }) => {

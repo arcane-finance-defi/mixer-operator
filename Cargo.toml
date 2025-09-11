@@ -41,9 +41,7 @@ diesel_cli = { version = "2.1", optional = true }
 diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
 deadpool-diesel = { version = "0.6.1", features = ["sqlite", "tracing"] }
 
-# libsqlite3-sys = { version = "0.26.0", features = ["bundled"]}
-
-fang = { git = "https://github.com/ayrat555/fang.git" , rev = "31a5ac64f86448e5ab736eaad227c366d4aece0a", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
+fang = { git = "ssh://git@github.com/ayrat555/fang.git" , rev = "31a5ac64f86448e5ab736eaad227c366d4aece0a", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
 # fang = { git = "https://github.com/ayrat555/fang.git" , rev = "7d1917c957b4186b6f0697f176a38a6f25e76334", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
 # fang = { path = "/home/vlad/work/arcane/fang/fang", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
 uuid = "1.18.1"
