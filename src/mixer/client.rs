@@ -7,12 +7,11 @@ use miden_bridge::{
 };
 use miden_client::{
     Client as MidenClient, ClientError as MidenClientError, ExecutionOptions,
-    rpc::{Endpoint, TonicRpcClient},
+    auth::BasicAuthenticator,
+    rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient},
     store::{Store, sqlite_store::SqliteStore},
     transaction::{TransactionRequestBuilder, TransactionRequestError},
 };
-use miden_client::auth::BasicAuthenticator;
-use miden_client::rpc::{NodeRpcClient, RpcError};
 use miden_objects::{
     AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, NoteError, Word, ZERO,
     account::{AccountFile, AccountId},
@@ -25,8 +24,7 @@ use miden_objects::{
     transaction::OutputNote,
     utils::{Deserializable, DeserializationError},
 };
-use rand::{Rng, rng};
-use rand::rngs::StdRng;
+use rand::{Rng, rng, rngs::StdRng};
 use thiserror::Error;
 use tokio::fs::read;
 use tracing::info;
@@ -35,7 +33,7 @@ const DEFAULT_STORAGE_FILE: &str = "store.db";
 
 pub struct MixerClient {
     client: MidenClient<BasicAuthenticator<StdRng>>,
-    rpc: Arc<dyn NodeRpcClient>
+    rpc: Arc<dyn NodeRpcClient>,
 }
 
 #[derive(Error, Debug)]
@@ -94,9 +92,7 @@ impl MixerClient {
             rpc.clone(),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
-            Some(Arc::new(BasicAuthenticator::<StdRng>::new(
-                &[]
-            ))),
+            Some(Arc::new(BasicAuthenticator::<StdRng>::new(&[]))),
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
@@ -106,7 +102,8 @@ impl MixerClient {
             .unwrap(),
             None,
             None,
-        ).await?;
+        )
+        .await?;
 
         Ok(Self { client, rpc })
     }
@@ -176,11 +173,10 @@ impl MixerClient {
         self.client.sync_state().await?;
 
         // obtain a cryptographic proof that note exists within the blockchain's state
-        let fetched_note = self
-            .rpc.get_note_by_id(note.id())
-            .await?;
+        let fetched_note = self.rpc.get_note_by_id(note.id()).await?;
 
-        let note_file = NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
+        let note_file =
+            NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
 
         let note_id = self.client.import_note(note_file).await?;
 

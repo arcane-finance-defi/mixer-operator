@@ -8,6 +8,9 @@ Cargo.lock
 .env.*
 !.env.example
 
+*.key
+*.crt
+
 # === Diesel & SQLite ===
 diesel.toml
 *.db

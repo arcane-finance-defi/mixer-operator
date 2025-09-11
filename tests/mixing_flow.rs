@@ -123,7 +123,7 @@ fn test_usdc_mixing_flow() {
         sleep(Duration::from_secs(180));
 
         let mix = Command::new("miden-bridge")
-            .args(&[
+            .args([
                 "mix",
                 "--serial-number", serial_number,
                 "--bridge-serial-number", bridge_note_serial_number,
@@ -134,8 +134,8 @@ fn test_usdc_mixing_flow() {
             ])
             .output();
 
-        if let Ok(output) = mix {
-            if output.status.success() {
+        if let Ok(output) = mix 
+            && output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 println!("MIX output:\n{stdout}");
 
@@ -146,7 +146,7 @@ fn test_usdc_mixing_flow() {
                 assert!(delta >= amount, "❌ Not enough USDC received");
                 println!("✅ Mixing complete!");
                 return;
-            }
+            
         }
 
         println!("Still pending...");

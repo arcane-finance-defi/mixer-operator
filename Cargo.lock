@@ -2095,7 +2095,7 @@ dependencies = [
 [[package]]
 name = "miden-bridge"
 version = "0.1.0"
-source = "git+ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git?branch=main#565d4c2bb7d909bd17930b07337f0ea8b9ee3777"
+source = "git+ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git?branch=main#3c204c2ce915ed8f3187083da0413bd904ff9009"
 dependencies = [
  "alloy-primitives",
  "anyhow",
@@ -2273,9 +2273,9 @@ dependencies = [
 
 [[package]]
 name = "miden-node-proto-build"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c659c31dbccad4661ee2ec7ba73403cd1f9381b4f511a336bdcf7abb2d7fc2ec"
+checksum = "1674a01e850ad65e8cdd7fa864b728dddc17e3d90944b1ff96933211bb1c806b"
 dependencies = [
  "anyhow",
  "prost",
@@ -2334,9 +2334,9 @@ dependencies = [
 
 [[package]]
 name = "miden-remote-prover-client"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26e5e1cd7afdeed6c585685c5608c237001ae145db9a11eb5eb407952b88135f"
+checksum = "a421a9b5e8f09bda3d91a2d17f7d6804107bd5bb775a61a82b4fe47204d1f3ae"
 dependencies = [
  "getrandom 0.3.3",
  "miden-node-proto-build",
@@ -3609,7 +3609,7 @@ dependencies = [
  "once_cell",
  "ring 0.17.14",
  "rustls-pki-types",
- "rustls-webpki 0.103.4",
+ "rustls-webpki 0.103.5",
  "subtle",
  "zeroize",
 ]
@@ -3656,9 +3656,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.4"
+version = "0.103.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a17884ae0c1b773f1ccd2bd4a8c72f16da897310a98b0e84bf349ad5ead92fc"
+checksum = "b5a37813727b78798e53c2bec3f5e8fe12a6d6f8389bf9ca7802add4c9905ad8"
 dependencies = [
  "ring 0.17.14",
  "rustls-pki-types",
