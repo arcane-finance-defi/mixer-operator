@@ -8,6 +8,7 @@ use crate::mixer::MixerClientSender;
 static MIXER_SENDER: OnceCell<MixerClientSender> = OnceCell::const_new();
 
 fn do_migration(db_url: &str) -> anyhow::Result<()> {
+    tracing::info!("Establishing connection to task queue database");
     let mut connection = PgConnection::establish(db_url)?;
     tracing::info!("Running migrations");
     run_migrations_postgres(&mut connection)
