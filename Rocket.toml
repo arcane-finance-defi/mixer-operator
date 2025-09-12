@@ -1,12 +1,12 @@
 [default]
 debug = true
+port = 8001
 
 [default.client]
 rpc_url = "https://rpc.testnet.miden.io"
 rpc_timeout_ms = 10000
 internal_queue_size = 100
 public_account_ids = "0x3452929efc547b20092a889ba8d0b2"
-port = 8001
 
 [default.db]
 url = "notes.db"
