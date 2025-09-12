@@ -33,7 +33,9 @@ Start the service with the cmd
 cargo run --release
 ```
 
-## How to deploy
+Or with docker - see [docker deploy docs](/deploy/README.md)
+
+## How to deploy binary package
 
 1. Build the service with target `x86_64-unknown-linux-gnu`
 2. Connect to the server via SSH `ssh root@156.67.63.214`

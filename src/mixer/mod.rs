@@ -62,10 +62,15 @@ pub fn event_loop(
             break;
         }
 
-        // TODO: clean and config
-        let request = if let Ok(request) = runtime.block_on(async {
-            tokio::time::timeout(Duration::from_millis(500), receiver.recv()).await
-        }) {
+        let recv = async {
+            tokio::time::timeout(
+                Duration::from_millis(config.event_loop_timeout_ms()),
+                receiver.recv(),
+            )
+            .await
+        };
+
+        let request = if let Ok(request) = runtime.block_on(recv) {
             request
         } else {
             tracing::debug!("No work for now");

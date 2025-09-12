@@ -39,6 +39,7 @@ pub struct MidenClient {
     pub internal_queue_size: u32,
     pub private_account_dir: Option<PathBuf>,
     pub public_account_ids: String,
+    pub event_loop_timeout_ms: u64,
 }
 
 impl MidenClient {
@@ -60,6 +61,10 @@ impl MidenClient {
 
     pub fn public_account_ids(&self) -> Vec<String> {
         self.public_account_ids.clone().split(',').map(String::from).collect()
+    }
+
+    pub fn event_loop_timeout_ms(&self) -> u64 {
+        self.event_loop_timeout_ms
     }
 }
 
