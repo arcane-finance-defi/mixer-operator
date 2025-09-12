@@ -70,14 +70,6 @@ fn rocket(
                 // api::note_drafts::delete_by_id_handler,
             ],
         )
-    // swagger
-    // .mount(
-    //     "/swagger-ui/",
-    //     make_swagger_ui(&SwaggerUIConfig {
-    //         url: "../openapi.json".to_owned(),
-    //         ..Default::default()
-    //     }),
-    // )
 }
 
 #[rocket::main]

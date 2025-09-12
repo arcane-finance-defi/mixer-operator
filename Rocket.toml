@@ -1,4 +1,5 @@
 [default]
+cli_colors = false
 debug = true
 port = 8001
 

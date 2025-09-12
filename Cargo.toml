@@ -27,7 +27,6 @@ once_cell = "1.21.3"
 rand = "0.9.1"
 rocket = { version = "0.5.1", features = ["json"] }
 rocket_cors = "0.6.0"
-rocket_okapi = { version = "0.9.0", features = ["swagger"] }
 thiserror = "2.0.12"
 tokio = "1.44.2"
 tokio-util = "0.7.8"
@@ -50,3 +49,4 @@ typetag = "0.2.20"
 miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", branch = "main", features = ["std"] }
 miden-client = { version = "0.11.3", features = ["tonic", "sqlite"] }
 miden-objects = "0.11.2"
+schemars = "1.0.4"
