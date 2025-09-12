@@ -1,19 +1,21 @@
 services:
-  mixer-operator:
+  local-mixer-operator:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
       ssh:
         - default
     environment:
+      RUST_BACKTRACE: 1 
+      RUST_LOG: "sqlx=warn,mixer_operator=info,debug"
       ROCKET_ENV: development
-      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}"
+      ROCKET_TQ: "{db_url=\"postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@local-postgres-db/${POSTGRES_DB}\"}"
     ports:
       - "8001:8001"
     depends_on:
-      - db
+      - local-postgres-db
 
-  db:
+  local-postgres-db:
     image: postgres:9.6-alpine
     environment:
       POSTGRES_USER: "${POSTGRES_USER}"
@@ -22,7 +24,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/mixer-operator/postgres/data
 
 volumes:
   postgres_data:
