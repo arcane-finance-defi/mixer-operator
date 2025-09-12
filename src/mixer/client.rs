@@ -21,7 +21,6 @@ use miden_objects::{
         Note, NoteAssets, NoteExecutionHint, NoteFile, NoteId, NoteInputs, NoteMetadata,
         NoteRecipient, NoteType,
     },
-    transaction::OutputNote,
     utils::{Deserializable, DeserializationError},
 };
 use rand::{Rng, rng, rngs::StdRng};
@@ -198,7 +197,7 @@ impl MixerClient {
             .new_transaction(
                 account_id,
                 TransactionRequestBuilder::new()
-                    .own_output_notes(vec![expected_bridge_note])
+                    .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
                     .build_consume_notes(vec![note_id])?,
             )
             .await?;
@@ -233,7 +232,7 @@ pub enum PublicNoteConstructorError {
 
 fn get_public_bridge_output_note(
     input_note: &Note,
-) -> Result<OutputNote, PublicNoteConstructorError> {
+) -> Result<Note, PublicNoteConstructorError> {
     let crosschain_asset = input_note
         .assets()
         .iter()
@@ -268,5 +267,5 @@ fn get_public_bridge_output_note(
 
     let recipient = NoteRecipient::new(serial_num, script, inputs);
 
-    Ok(OutputNote::Full(Note::new(assets, metadata, recipient)))
+    Ok(Note::new(assets, metadata, recipient))
 }
