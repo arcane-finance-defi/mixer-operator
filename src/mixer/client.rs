@@ -230,9 +230,7 @@ pub enum PublicNoteConstructorError {
     MalformedSerialNumber(),
 }
 
-fn get_public_bridge_output_note(
-    input_note: &Note,
-) -> Result<Note, PublicNoteConstructorError> {
+fn get_public_bridge_output_note(input_note: &Note) -> Result<Note, PublicNoteConstructorError> {
     let crosschain_asset = input_note
         .assets()
         .iter()

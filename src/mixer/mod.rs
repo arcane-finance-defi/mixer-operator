@@ -1,4 +1,5 @@
 use std::time::Duration;
+
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteId},
@@ -10,7 +11,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    config::MidenClient as MidenClientConfig, mixer::client::{MixerClient, MixerClientError}
+    config::MidenClient as MidenClientConfig,
+    mixer::client::{MixerClient, MixerClientError},
 };
 
 pub mod client;
