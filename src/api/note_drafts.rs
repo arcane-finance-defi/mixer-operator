@@ -42,7 +42,7 @@ pub async fn get_status_handler(
     match note_status {
         Ok(status) => Ok(Some(Json(status.bits()))),
         Err(error) => match error {
-            NoteRepositoryError::NotFound => Ok(None), // 404
+            NoteRepositoryError::NotFound(_) => Ok(None), // 404
             NoteRepositoryError::Internal(inner) => Err(ErrorResponse { error: inner.to_string() }),
             _any_other => Err(ErrorResponse {
                 error: "undefined note repository error".to_string(),

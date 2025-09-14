@@ -11,7 +11,7 @@ pub enum NoteRepositoryError {
     #[error("More than one rows affected")]
     MoreThanOneRowAffected,
     #[error("Note not found")]
-    NotFound,
+    NotFound(String),
     #[error(transparent)]
     Internal(#[from] NoteRepositoryErrorGeneric),
 }
@@ -108,7 +108,7 @@ impl NoteRepository for DatabaseStorage {
             .map_err(NoteRepositoryErrorGeneric::new)?
             .map_err(NoteRepositoryErrorGeneric::new)?;
 
-        Ok(result.ok_or_else(|| NoteRepositoryError::NotFound)?)
+        Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?)
     }
 
     async fn get_note_by_request_id(&self, req_id: &str) -> Result<FullNote, NoteRepositoryError> {
@@ -127,7 +127,7 @@ impl NoteRepository for DatabaseStorage {
             .map_err(NoteRepositoryErrorGeneric::new)?
             .map_err(NoteRepositoryErrorGeneric::new)?;
 
-        Ok(result.ok_or_else(|| NoteRepositoryError::NotFound)?)
+        Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(req_id.to_string()))?)
     }
 
     async fn get_note_status_by_id(
@@ -149,7 +149,7 @@ impl NoteRepository for DatabaseStorage {
             .map_err(NoteRepositoryErrorGeneric::new)?
             .map_err(NoteRepositoryErrorGeneric::new)?;
 
-        let result = result.ok_or_else(|| NoteRepositoryError::NotFound)?;
+        let result = result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?;
         Ok(result.status)
     }
 

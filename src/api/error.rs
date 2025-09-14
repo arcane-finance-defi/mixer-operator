@@ -28,6 +28,8 @@ pub enum EndpointError {
     InternalStorage(String),
     #[error("Task queue error")]
     TaskQueue(String),
+    #[error("Note not found")]
+    NoteNotFound(String),
     #[error("Unknown source error")]
     Unknown { source: anyhow::Error },
 }
@@ -42,6 +44,7 @@ impl From<anyhow::Error> for EndpointError {
     }
 }
 
+// https://stuarth.github.io/rocket-error-handling/
 impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
     fn respond_to(self, req: &'r rocket::Request<'_>) -> response::Result<'o> {
         // log `self` to your favored error tracker, e.g.
@@ -58,6 +61,17 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
                     Json(json!({"error": format!("Mixer Client error occurred - {err}")}));
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
+            EndpointError::TaskQueue(err) => {
+                let error_message =
+                    Json(json!({"error": format!("Task Queue error occurred - {err}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
+            EndpointError::InternalStorage(err) => {
+                let error_message =
+                    Json(json!({"error": format!("Internal State error occurred - {err}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
+            EndpointError::NoteNotFound(_) => Status::NotFound.respond_to(req),
             // TODO: other
             EndpointError::Unknown { source } => {
                 let error_message =
@@ -78,6 +92,13 @@ impl From<fang::AsyncQueueError> for EndpointError {
 
 impl From<crate::db::models::NoteRepositoryError> for EndpointError {
     fn from(derr: crate::db::models::NoteRepositoryError) -> Self {
-        EndpointError::InternalStorage(derr.to_string())
+        use crate::db::models::NoteRepositoryError;
+        match derr {
+            NoteRepositoryError::NotFound(smth) => EndpointError::NoteNotFound(smth),
+            NoteRepositoryError::MoreThanOneRowAffected => {
+                EndpointError::InternalStorage(derr.to_string())
+            },
+            NoteRepositoryError::Internal(e) => EndpointError::InternalStorage(e.to_string()),
+        }
     }
 }

@@ -14,9 +14,7 @@ use miden_objects::{
     utils::parse_hex_string_as_word,
 };
 use rocket::{
-    State as RocketState, get,
-    http::Status,
-    post, response,
+    State as RocketState, get, post,
     serde::{Deserialize, Serialize, json::Json},
 };
 use schemars::JsonSchema;
@@ -152,35 +150,6 @@ pub struct MixDelayedRequest {
 #[serde(crate = "rocket::serde")]
 pub struct MixDelayedResponse {
     request_id: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(crate = "rocket::serde")]
-// #[response(status = 500, content_type = "json")]
-pub struct ErrorResponse {
-    error: String,
-}
-
-// TODO: to be replaced with EndpointError and moved out to error.rs module
-// https://stuarth.github.io/rocket-error-handling/
-#[allow(clippy::match_single_binding)]
-impl<'r, 'o: 'r> response::Responder<'r, 'o> for ErrorResponse {
-    fn respond_to(self, req: &'r rocket::Request<'_>) -> response::Result<'o> {
-        // log `self` to your favored error tracker, e.g.
-        // sentry::capture_error(&self);
-
-        match self {
-            // in our simplistic example, we're happy to respond with the default 500 responder in
-            // all cases
-            _ => Status::InternalServerError.respond_to(req),
-        }
-    }
-}
-
-impl From<EndpointError> for ErrorResponse {
-    fn from(value: EndpointError) -> Self {
-        Self { error: value.to_string() }
-    }
 }
 
 impl TryFrom<&MixRequest> for Note {
