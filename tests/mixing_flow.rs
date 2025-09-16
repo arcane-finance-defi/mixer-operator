@@ -1,3 +1,4 @@
+use std::env::VarError;
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
@@ -45,7 +46,7 @@ fn test_usdc_mixing_flow() {
     let sepolia_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com";
     let usdc_address = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
     let bridge_address = "0x0b03df1D4B3884b8987254D0C990342B571183AF";
-    let miden_usdc = "0x63c9d7af451fda2000fa06ce0bdefd";
+    let miden_usdc = "0x4de3bc8d67731a2067af0fcc7a2e34";
     let evm_min_balance = 1000000000000000u128;
 
     if !std::path::Path::new("miden-client.toml").exists() {
