@@ -2076,9 +2076,9 @@ dependencies = [
 
 [[package]]
 name = "miden-client"
-version = "0.11.3"
+version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "372b0afd8ac8c06e3652c972080a48a043ba60698065a8ffb2facf5a30b34d16"
+checksum = "0d6d100dc163a259a942d2883803c94fedce6f8e2e93beda8f1fc071f0258a40"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2966,7 +2966,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools",
  "log",
  "multimap",
