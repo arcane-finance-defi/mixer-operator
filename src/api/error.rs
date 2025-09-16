@@ -56,12 +56,12 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
                     Json(json!({"error": format!("FromHex error occurred - {err}")}));
                 response::status::Custom(Status::BadRequest, error_message).respond_to(req)
             },
-            EndpointError::AccountId(err)=> {
+            EndpointError::AccountId(err) => {
                 let error_message =
                     Json(json!({"error": format!("AccountId error occurred - {err}")}));
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
-            EndpointError::MpscSend(err)=> {
+            EndpointError::MpscSend(err) => {
                 let error_message =
                     Json(json!({"error": format!("Mixer client request error occurred - {err}")}));
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
@@ -97,11 +97,6 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
                     Json(json!({"error": format!("An unknown error occurred - {source}")}));
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
-            _ => {
-                let error_message =
-                    Json(json!({"error": format!("A spurious error occurred, probably a bug")}));
-                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
-            }, 
         }
     }
 }
