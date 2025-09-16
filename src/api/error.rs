@@ -51,6 +51,26 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
         // sentry::capture_error(&self);
 
         match self {
+            EndpointError::FromHex(err) => {
+                let error_message =
+                    Json(json!({"error": format!("FromHex error occurred - {err}")}));
+                response::status::Custom(Status::BadRequest, error_message).respond_to(req)
+            },
+            EndpointError::AccountId(err) => {
+                let error_message =
+                    Json(json!({"error": format!("AccountId error occurred - {err}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
+            EndpointError::MpscSend(err) => {
+                let error_message =
+                    Json(json!({"error": format!("Mixer client request error occurred - {err}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
+            EndpointError::OneshotRecv(err) => {
+                let error_message =
+                    Json(json!({"error": format!("Mixer client response error - {err}")}));
+                response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
+            },
             EndpointError::Deserialization(err) => {
                 let error_message =
                     Json(json!({"error": format!("Deserialization error occurred - {err}")}));
@@ -72,13 +92,12 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
             EndpointError::NoteNotFound(_) => Status::NotFound.respond_to(req),
-            // TODO: other
             EndpointError::Unknown { source } => {
                 let error_message =
                     Json(json!({"error": format!("An unknown error occurred - {source}")}));
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
-            _ => Status::InternalServerError.respond_to(req),
+            // _ => Status::InternalServerError.respond_to(req),
         }
     }
 }
