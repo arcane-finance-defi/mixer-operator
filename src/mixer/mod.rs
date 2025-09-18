@@ -1,13 +1,19 @@
-use miden_objects::account::AccountId;
-use miden_objects::note::{Note, NoteId};
+use std::time::Duration;
+
+use miden_objects::{
+    account::AccountId,
+    note::{Note, NoteId},
+};
 use tokio::{
     runtime::Runtime,
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::config::Config;
-use crate::mixer::client::{MixerClient, MixerClientError};
+use crate::{
+    config::MidenClient as MidenClientConfig,
+    mixer::client::{MixerClient, MixerClientError},
+};
 
 pub mod client;
 pub mod utils;
@@ -17,6 +23,7 @@ pub type MixerClientReceiver = mpsc::Receiver<MixClientRequest>;
 
 type MixerClientResponse<T> = oneshot::Sender<Result<T, MixerClientError>>;
 
+#[allow(clippy::large_enum_variant)]
 pub enum MixClientRequest {
     Mix {
         note: Note,
@@ -30,7 +37,8 @@ pub enum MixClientRequest {
 }
 
 pub fn event_loop(
-    config: Config,
+    config: MidenClientConfig,
+    debug: bool,
     mut receiver: MixerClientReceiver,
     runtime: Runtime,
     cancellation_token: CancellationToken,
@@ -40,7 +48,7 @@ pub fn event_loop(
             config.rpc_url().as_str(),
             config.rpc_timeout_ms(),
             None,
-            config.debug(),
+            debug,
         ))
         .unwrap();
 
@@ -54,32 +62,38 @@ pub fn event_loop(
             break;
         }
 
-        let request = runtime.block_on(receiver.recv());
+        let recv = async {
+            tokio::time::timeout(
+                Duration::from_millis(config.event_loop_timeout_ms()),
+                receiver.recv(),
+            )
+            .await
+        };
+
+        let request = if let Ok(request) = runtime.block_on(recv) {
+            request
+        } else {
+            tracing::debug!("No work for now");
+            continue;
+        };
 
         match request {
-            Some(MixClientRequest::Mix {
-                note,
-                account_id,
-                response_sink,
-            }) => {
+            Some(MixClientRequest::Mix { note, account_id, response_sink }) => {
                 let result = runtime.block_on(client.mix(note, account_id));
                 tracing::info!("MixerClient::Mix {result:#?}");
                 response_sink.send(result).unwrap();
-            }
+            },
 
-            Some(MixClientRequest::Poll {
-                note_id,
-                response_sink,
-            }) => {
+            Some(MixClientRequest::Poll { note_id, response_sink }) => {
                 let result = runtime.block_on(client.is_note_onchain(note_id));
                 tracing::info!("MixerClient::Poll {result:#?}");
                 response_sink.send(result).unwrap();
-            }
+            },
 
             None => {
                 tracing::warn!("Channel closed");
                 break;
-            }
+            },
         }
     }
 

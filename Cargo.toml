@@ -1,8 +1,8 @@
 [package]
 name = "mixer-operator"
-version = "0.5.0"
+version = "0.11.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 default-run = "mixer-operator"
 
 [profile.release]
@@ -19,16 +19,10 @@ anyhow = "1.0.98"
 async-trait = "0.1.88"
 bitflags = "2.9.1"
 dotenvy = "0.15.7"
-diesel = { version = "2.0", features = ["sqlite", "r2d2", "chrono"] }
-diesel_cli = { version = "2.0", optional = true }
-deadpool-diesel = { version = "0.6.1", features = ["sqlite", "tracing"] }
-chrono = "0.4.41"
+chrono = { version = "0.4.41", features = ["serde"] }
 futures = "0.3.31"
 glob = "0.3.2"
 hex = "0.4.3"
-miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", branch = "main", features = ["std", "async"] }
-miden-client = { git = " ssh://git@github.com/arcane-finance-defi/miden-bridge-cli.git", branch = "main", features = ["tonic", "sqlite"] }
-miden-objects = "0.10.0"
 once_cell = "1.21.3"
 rand = "0.9.1"
 rocket = { version = "0.5.1", features = ["json"] }
@@ -40,5 +34,17 @@ tracing = { version = "0.1.41", features = ["max_level_trace", "release_max_leve
 tracing-log = "0.2.0"
 tracing-futures = { version = "0.2.5", default-features = false }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 
+diesel = { version = "2.1", features = ["sqlite", "r2d2", "chrono"] }
+diesel_cli = { version = "2.1", optional = true }
+diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
+deadpool-diesel = { version = "0.6.1", features = ["sqlite", "tracing"] }
+
+fang = { git = "ssh://git@github.com/ayrat555/fang.git" , rev = "31a5ac64f86448e5ab736eaad227c366d4aece0a", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
+uuid = "1.18.1"
+typetag = "0.2.20"
+
+miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", branch = "main", features = ["std"] }
+miden-client = { version = "0.11.3", features = ["tonic", "sqlite"] }
+miden-objects = "0.11.2"
+schemars = "1.0.4"

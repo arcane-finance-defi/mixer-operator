@@ -1,0 +1,53 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        BUILD_TARGET: [release] 
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image locally
+      id: docker-build
+      uses: docker/build-push-action@v5
+      with:
+        ssh: |
+            default=${{ env.SSH_AUTH_SOCK }}
+        context: .
+        file: ./deploy/Dockerfile
+        tags: ${{ github.event.repository.name }}-${{ matrix.BUILD_TARGET }}:${{ github.sha }}
+        load: true # This is crucial for building locally
+        push: false # Do not push the image to a registry at this stage
+
+    - name: Temporarily save image locally instead of registry
+      id: docker-save
+      run: docker save ${{ github.event.repository.name }}-${{ matrix.BUILD_TARGET }}:${{ github.sha }} | gzip > ${{ github.event.repository.name }}-${{ matrix.BUILD_TARGET }}_${{ github.sha }}.tar.gz
+
+    - name: Upload compressed Docker Image Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: image_${{ github.event.repository.name }}-${{ matrix.BUILD_TARGET }}_${{ github.sha }}
+        path: ${{ github.event.repository.name }}-${{ matrix.BUILD_TARGET }}_${{ github.sha }}.tar.gz
+        compression-level: 9 
+        

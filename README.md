@@ -1,10 +1,13 @@
 # Miden mixer operator
 
-Mixer operator is rust based offchain service that generates the consume-note transactions with provided CROSSCHAIN notes and preconfigured public faucet accounts.
-
+The mixer operator is a Rust-based off-chain service that generates consume-note transactions using the provided cross-chain notes and preconfigured public faucet accounts.
 ## API
 
-The service provides singe endpoint `POST /mix` that generates tx from the note and account and returns tx id
+The service provides:
+
+* `POST /api/v1/mix` endpoint that generates tx from the note and account and returns `tx_id`
+* `POST /api/v1/mix/delayed` endpoint that put note execution request into the queue to be excuted later with given delay in milliseconds and return `task_id`
+* `POST /api/v1/mix/delayed/status/<task_id>` endpoint that returns note execution status for given `task_id`
 
 ## Configuration
 
@@ -16,9 +19,11 @@ ___./Rocket.toml___ contains the configs for the service
 * ___rpc_timeout_ms___ miden rpc request timeout in milliseconds
 * ___public_account_ids___ comma separated list of public faucet accounts on miden chain to work with
 
+* ___tq.db_url___ connection URL of task queue database
+* ___db.url___ URL of local notes storage
 ## Prerequisites
 
-* rust v1.88.0
+* rust v1.89.0
 
 ## How to run
 
@@ -28,7 +33,9 @@ Start the service with the cmd
 cargo run --release
 ```
 
-## How to deploy
+Or with docker - see [docker deploy docs](/deploy/README.md)
+
+## How to deploy binary package
 
 1. Build the service with target `x86_64-unknown-linux-gnu`
 2. Connect to the server via SSH `ssh root@156.67.63.214`
@@ -38,9 +45,12 @@ cargo run --release
 
 ## How to test
 
+* To run unit-tests only run `cargo test --lib`
+* To run with integration tests run `cargo test`. Do not forget to set [environment variables](###test-prerequisites)
+
 ### Test prerequisites
 
-* Latest version of [miden-bridge CLI](https://github.com/arcane-finance-defi/miden-bridge-cli)
+* Latest version of [miden-bridge CLI](https://github.com/arcane-finance-defi/miden-bridge-cli) (Install with `cargo install --git https://github.com/arcane-finance-defi/miden-bridge-cli miden-client-cli` command)
 * [Foundry](https://getfoundry.sh/) toolchain
 
 1. Cleanup previous cli configs `rm -r miden-client.toml store.sqlite3 templates keystore`

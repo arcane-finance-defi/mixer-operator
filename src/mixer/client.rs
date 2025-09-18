@@ -1,9 +1,4 @@
-use rand::{Rng, rng};
-use std::path::PathBuf;
-use std::sync::Arc;
-use thiserror::Error;
-use tokio::fs::read;
-use tracing::info;
+use std::{path::PathBuf, sync::Arc};
 
 use glob::glob;
 use miden_bridge::{
@@ -12,7 +7,8 @@ use miden_bridge::{
 };
 use miden_client::{
     Client as MidenClient, ClientError as MidenClientError, ExecutionOptions,
-    rpc::{Endpoint, TonicRpcClient},
+    auth::BasicAuthenticator,
+    rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient},
     store::{Store, sqlite_store::SqliteStore},
     transaction::{TransactionRequestBuilder, TransactionRequestError},
 };
@@ -25,14 +21,18 @@ use miden_objects::{
         Note, NoteAssets, NoteExecutionHint, NoteFile, NoteId, NoteInputs, NoteMetadata,
         NoteRecipient, NoteType,
     },
-    transaction::OutputNote,
     utils::{Deserializable, DeserializationError},
 };
+use rand::{Rng, rng, rngs::StdRng};
+use thiserror::Error;
+use tokio::fs::read;
+use tracing::info;
 
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
 pub struct MixerClient {
-    client: MidenClient,
+    client: MidenClient<BasicAuthenticator<StdRng>>,
+    rpc: Arc<dyn NodeRpcClient>,
 }
 
 #[derive(Error, Debug)]
@@ -57,6 +57,8 @@ pub enum MixerClientError {
     InternalDeserializationError(#[from] DeserializationError),
     #[error(transparent)]
     AccountIdParsingError(#[from] AccountIdError),
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
 }
 
 impl MixerClient {
@@ -77,17 +79,19 @@ impl MixerClient {
         let mut rng = rng();
         let coin_seed: [u64; 4] = rng.random();
 
-        let rng = RpoRandomCoin::new(coin_seed.map(Felt::new));
+        let rng = RpoRandomCoin::new(Word::from(coin_seed.map(Felt::new)));
+
+        let rpc = Arc::new(TonicRpcClient::new(
+            &Endpoint::try_from(rpc_endpoint)
+                .map_err(MixerClientError::MalformedEndpointUrlError)?,
+            rpc_timeout_ms,
+        ));
 
         let client = MidenClient::new(
-            Arc::new(TonicRpcClient::new(
-                &Endpoint::try_from(rpc_endpoint)
-                    .map_err(MixerClientError::MalformedEndpointUrlError)?,
-                rpc_timeout_ms,
-            )),
+            rpc.clone(),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
-            Arc::new(()),
+            Some(Arc::new(BasicAuthenticator::<StdRng>::new(&[]))),
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
@@ -97,10 +101,10 @@ impl MixerClient {
             .unwrap(),
             None,
             None,
-            "".to_string(),
-        );
+        )
+        .await?;
 
-        Ok(Self { client })
+        Ok(Self { client, rpc })
     }
 
     pub async fn initialize(
@@ -117,25 +121,15 @@ impl MixerClient {
 
         info!("Mixer state synced");
 
-        for path in glob(supported_accounts_dir.as_str())
-            .unwrap()
-            .filter_map(Result::ok)
-        {
+        for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
             let account_bytes = read(path).await?;
             let account_file = AccountFile::read_from_bytes(account_bytes.as_slice())?;
             let account_id = account_file.account.id();
             let account_id_hex = account_id.to_hex();
             info!("Importing the private account with id {account_id_hex}");
 
-            if self
-                .client
-                .try_get_account_header(account_id)
-                .await
-                .is_err()
-            {
-                self.client
-                    .add_account(&account_file.account, None, false)
-                    .await?;
+            if self.client.try_get_account_header(account_id).await.is_err() {
+                self.client.add_account(&account_file.account, None, false).await?;
             }
             info!("Private account imported")
         }
@@ -144,12 +138,7 @@ impl MixerClient {
             info!("Importing the public account with id {public_account_id}");
             let public_account_id = AccountId::from_hex(public_account_id.as_str())?;
 
-            if self
-                .client
-                .try_get_account_header(public_account_id)
-                .await
-                .is_err()
-            {
+            if self.client.try_get_account_header(public_account_id).await.is_err() {
                 self.client.import_account_by_id(public_account_id).await?;
             }
             info!("Public account imported")
@@ -183,13 +172,10 @@ impl MixerClient {
         self.client.sync_state().await?;
 
         // obtain a cryptographic proof that note exists within the blockchain's state
-        let proof = self
-            .client
-            .get_note_inclusion_proof(note.id())
-            .await?
-            .ok_or(MixerClientError::InvalidNoteTypeError())?;
+        let fetched_note = self.rpc.get_note_by_id(note.id()).await?;
 
-        let note_file = NoteFile::NoteWithProof(note.clone(), proof);
+        let note_file =
+            NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
 
         let note_id = self.client.import_note(note_file).await?;
 
@@ -198,9 +184,7 @@ impl MixerClient {
 
         // TODO: errors cast
         if let Err(MidenClientError::AccountDataNotFound(_)) = account {
-            Err(MixerClientError::NotManageableAccountError(
-                account_id.to_hex(),
-            ))
+            Err(MixerClientError::NotManageableAccountError(account_id.to_hex()))
         } else {
             Ok(())
         }?;
@@ -213,8 +197,7 @@ impl MixerClient {
             .new_transaction(
                 account_id,
                 TransactionRequestBuilder::new()
-                    .own_output_notes(vec![expected_bridge_note])
-                    .with_empty_script(true)
+                    .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
                     .build_consume_notes(vec![note_id])?,
             )
             .await?;
@@ -233,11 +216,7 @@ impl MixerClient {
     pub async fn is_note_onchain(&mut self, note_id: NoteId) -> Result<bool, MixerClientError> {
         self.client.sync_state().await?;
 
-        Ok(self
-            .client
-            .get_note_inclusion_proof(note_id)
-            .await?
-            .is_some())
+        Ok(self.rpc.get_note_by_id(note_id).await.is_ok())
     }
 }
 
@@ -251,9 +230,7 @@ pub enum PublicNoteConstructorError {
     MalformedSerialNumber(),
 }
 
-fn get_public_bridge_output_note(
-    input_note: &Note,
-) -> Result<OutputNote, PublicNoteConstructorError> {
+fn get_public_bridge_output_note(input_note: &Note) -> Result<Note, PublicNoteConstructorError> {
     let crosschain_asset = input_note
         .assets()
         .iter()
@@ -275,19 +252,18 @@ fn get_public_bridge_output_note(
         ZERO,
     )?;
 
-    let serial_num = Word::try_from(input_note.inputs().values()[..4].to_vec())
+    let serial_num = Word::try_from(&input_note.inputs().values()[..4])
         .map_err(|_| PublicNoteConstructorError::MalformedSerialNumber())?;
 
     let inputs = NoteInputs::new(
         [
             Word::from(Asset::Fungible(*crosschain_asset)).to_vec(),
-            input_note.inputs().values()[4..8].to_vec(),
-            input_note.inputs().values()[9..].to_vec(),
+            input_note.inputs().values()[4..].to_vec(),
         ]
         .concat(),
     )?;
 
     let recipient = NoteRecipient::new(serial_num, script, inputs);
 
-    Ok(OutputNote::Full(Note::new(assets, metadata, recipient)))
+    Ok(Note::new(assets, metadata, recipient))
 }

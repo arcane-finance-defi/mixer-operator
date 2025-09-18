@@ -24,7 +24,7 @@ where
                 } else {
                     Err(anyhow::anyhow!("task {name} was cancelled"))
                 }
-            }
+            },
         };
         (name, result)
     }
@@ -51,7 +51,7 @@ where
                 } else {
                     Err(anyhow::anyhow!("task {name} was cancelled"))
                 }
-            }
+            },
         };
         (name, result)
     }

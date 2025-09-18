@@ -1,19 +1,22 @@
-use crate::db::schema;
 use chrono::NaiveDateTime;
 use diesel::{
     AsExpression, FromSqlRow, backend::Backend, deserialize, prelude::*, serialize,
     sql_types::Integer,
 };
 
+use crate::db::schema;
+
 #[derive(Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
 #[diesel(table_name = schema::notes)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct FullNote {
-    pub note_id: String, // TODO: this should be indexable to use with indexing or even miden_objects type directly
+    pub note_id: String, /* TODO: this should be indexable to use with indexing or even
+                          * miden_objects type directly */
     pub note: String,
     pub account_id: String,
     pub scheduled_datetime: Option<NaiveDateTime>,
     pub status: NoteStatus,
+    pub request_id: Option<String>,
 }
 
 #[derive(Insertable)]
@@ -23,17 +26,19 @@ pub struct NewNote<'a> {
     pub note_id: &'a str,
     pub note: &'a str,
     pub account_id: &'a str,
+    pub request_id: &'a str,
 }
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
     #[diesel(sql_type = Integer)]
     pub struct NoteStatus: u8 {
+        const UNDEFINED = 0x00;
         const ACCEPTED = 0x01;
         const RECONSTRUCTED = 0x02;
         const ONCHAIN = 0x04;
         const TXED = 0x08;
-        const CONSUMED = 0x30;
+        const CONSUMED = 0x10;
     }
 }
 

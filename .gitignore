@@ -8,13 +8,14 @@ Cargo.lock
 .env.*
 !.env.example
 
+*.key
+*.crt
+
 # === Diesel & SQLite ===
 diesel.toml
 *.db
 *.sqlite
 *.sqlite3
-migrations/*/down.sql
-migrations/*/up.sql
 
 # === IDE / Editor ===
 .idea/

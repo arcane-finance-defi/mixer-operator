@@ -7,5 +7,6 @@ diesel::table! {
         account_id -> Text,
         scheduled_datetime -> Nullable<Timestamp>,
         status -> Integer,
+        request_id -> Nullable<Text>,
     }
 }
