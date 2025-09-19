@@ -67,6 +67,18 @@ pub async fn post_handler(
     Ok(Json(MixResponse { tx_id: response }))
 }
 
+#[instrument(skip(data, state))]
+#[post("/mix/batch", data = "<data>")]
+pub async fn post_batch_handler(
+    data: Json<Vec<MixRequest>>,
+    state: &RocketState<MixerState>,
+) -> Result<Json<MixResponse>, EndpointError> {
+    let data = data.into_inner();
+
+    // return tx id
+    Ok(Json(MixResponse { tx_id: response }))
+}
+
 #[post("/mix/delayed", data = "<data>")]
 #[instrument(skip(data, note_repo, task_queue))]
 pub async fn delayed_post_handler(

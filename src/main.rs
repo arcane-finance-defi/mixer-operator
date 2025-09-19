@@ -59,16 +59,7 @@ fn rocket(
         // new api
         .mount(
             "/api/v1/",
-            rocket::routes![
-                api::mix::post_handler,
-                api::mix::delayed_post_handler,
-                api::mix::delayed_status_get_handler,
-                api::note_drafts::post_new_handler,
-                api::note_drafts::get_status_handler,
-                // api::note_drafts::get_by_id_handler,
-                // api::note_drafts::post_activate_by_id_handler,
-                // api::note_drafts::delete_by_id_handler,
-            ],
+            api::routes(),
         )
 }
 
