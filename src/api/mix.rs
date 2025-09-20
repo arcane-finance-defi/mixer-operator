@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context as _};
+use anyhow::{Context as _, anyhow};
 use chrono::{DateTime, TimeDelta, Utc};
 use fang::{AsyncQueue, AsyncQueueable};
 use miden_bridge::{
@@ -44,15 +44,14 @@ pub async fn post_handler(
     state: &RocketState<MixerState>,
 ) -> Result<Json<MixResponse>, EndpointError> {
     let data = data.into_inner();
-
     let responses = mix_instantly(vec![data], state).await?;
-
     if responses.len() != 1 {
-        return Err(EndpointError::from(anyhow!("expected exactly one response from mixer client")));
+        return Err(EndpointError::from(anyhow!(
+            "expected exactly one response from mixer client"
+        )));
     }
-
     // return tx id
-    let tx_id = (&responses[0]).to_string();
+    let tx_id = responses[0].to_string();
     Ok(Json(MixResponse { tx_id }))
 }
 
@@ -63,21 +62,101 @@ pub async fn post_batch_handler(
     state: &RocketState<MixerState>,
 ) -> Result<Json<Vec<MixResponse>>, EndpointError> {
     let data = data.into_inner();
-
     let responses = mix_instantly(data, state).await?;
-
     // return tx id
     let responses = responses.into_iter().map(|tx_id| MixResponse { tx_id }).collect();
     Ok(Json(responses))
 }
 
-async fn mix_instantly(reqs: Vec<MixRequest>, state: &RocketState<MixerState>) -> Result<Vec<String>, EndpointError> {
+#[post("/mix/delayed", data = "<data>")]
+#[instrument(skip(data, note_repo, task_queue))]
+pub async fn delayed_post_handler(
+    data: Json<MixDelayedRequest>,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
+    task_queue: &RocketState<Arc<AsyncQueue>>,
+) -> Result<Json<MixDelayedResponse>, EndpointError> {
+    let data = data.into_inner();
+    let responses = mix_delayed(vec![data], note_repo, task_queue).await?;
+    if responses.len() != 1 {
+        return Err(EndpointError::from(anyhow!(
+            "expected exactly one response from mixer client"
+        )));
+    }
+    let request_id = responses[0].to_string();
+    Ok(Json(MixDelayedResponse { request_id }))
+}
+
+#[post("/mix/batch/delayed", data = "<data>")]
+#[instrument(skip(data, note_repo, task_queue))]
+pub async fn delayed_post_batch_handler(
+    data: Json<Vec<MixDelayedRequest>>,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
+    task_queue: &RocketState<Arc<AsyncQueue>>,
+) -> Result<Json<Vec<MixDelayedResponse>>, EndpointError> {
+    let data = data.into_inner();
+    let responses = mix_delayed(data, note_repo, task_queue).await?;
+    let responses = responses
+        .into_iter()
+        .map(|request_id| MixDelayedResponse { request_id })
+        .collect();
+    Ok(Json(responses))
+}
+
+#[get("/mix/delayed/status/<id>")]
+#[instrument(skip(note_repo))]
+pub async fn delayed_status_get_handler(
+    id: &str,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
+) -> Result<String, EndpointError> {
+    let note = note_repo.get_note_by_request_id(id).await?;
+    if note.status.contains(NoteStatus::TXED) {
+        Ok(String::from("TXED"))
+    } else {
+        Ok(String::from("PENDING"))
+    }
+}
+
+async fn mix_delayed(
+    reqs: Vec<MixDelayedRequest>,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
+    task_queue: &RocketState<Arc<AsyncQueue>>,
+) -> Result<Vec<String>, EndpointError> {
+    let mut responses = Vec::new();
+
+    for req in reqs {
+        let request_id = Uuid::new_v4();
+        let scheduled_at = schedule_after(req.delayed_ms)?;
+
+        let note = Note::try_from(&req)?;
+        let note_id = &note.id();
+        let full_note =
+            fill_note_record(note, req.account_id, scheduled_at, &request_id.to_string())?;
+
+        info!("Schedule delayed mixing for note {note_id:?} {request_id} at {scheduled_at}");
+
+        note_repo.add_note(full_note).await?;
+        trace!("Note {note_id} added to storage as {request_id}");
+
+        let task = AsyncMixTask::new(&request_id.to_string(), scheduled_at);
+        task_queue.insert_task(&task).await?;
+        trace!("Task for note {note_id} enqueued");
+
+        responses.push(request_id.to_string());
+    }
+
+    Ok(responses)
+}
+
+async fn mix_instantly(
+    reqs: Vec<MixRequest>,
+    state: &RocketState<MixerState>,
+) -> Result<Vec<String>, EndpointError> {
     let mut responses = Vec::new();
 
     if reqs.len() > MAX_NOTES_IN_BATCH {
         return Err(EndpointError::BatchLimit);
     }
-    
+
     for req in reqs {
         let note = Note::try_from(&req)?;
         info!("Mixing note: {:?}", &note.id());
@@ -101,49 +180,8 @@ async fn mix_instantly(reqs: Vec<MixRequest>, state: &RocketState<MixerState>) -
 
         responses.push(response);
     }
-    
+
     Ok(responses)
-}
-
-#[post("/mix/delayed", data = "<data>")]
-#[instrument(skip(data, note_repo, task_queue))]
-pub async fn delayed_post_handler(
-    data: Json<MixDelayedRequest>,
-    note_repo: &RocketState<Arc<dyn NoteRepository>>,
-    task_queue: &RocketState<Arc<AsyncQueue>>,
-) -> Result<Json<MixDelayedResponse>, EndpointError> {
-    let request_id = Uuid::new_v4();
-    let scheduled_at = schedule_after(data.delayed_ms)?;
-
-    let data = data.into_inner();
-    let note = Note::try_from(&data)?;
-    let note_id = &note.id();
-    let full_note = fill_note_record(note, data.account_id, scheduled_at, &request_id.to_string())?;
-
-    info!("Schedule delayed mixing for note {note_id:?} {request_id} at {scheduled_at}");
-
-    note_repo.add_note(full_note).await?;
-    trace!("Note {note_id} added to storage as {request_id}");
-
-    let task = AsyncMixTask::new(&request_id.to_string(), scheduled_at);
-    task_queue.insert_task(&task).await?;
-    trace!("Task for note {note_id} enqueued");
-
-    Ok(Json(MixDelayedResponse { request_id: request_id.to_string() }))
-}
-
-#[get("/mix/delayed/status/<id>")]
-#[instrument(skip(note_repo))]
-pub async fn delayed_status_get_handler(
-    id: &str,
-    note_repo: &RocketState<Arc<dyn NoteRepository>>,
-) -> Result<String, EndpointError> {
-    let note = note_repo.get_note_by_request_id(id).await?;
-    if note.status.contains(NoteStatus::TXED) {
-        Ok(String::from("TXED"))
-    } else {
-        Ok(String::from("PENDING"))
-    }
 }
 
 // TODO: maybe we should use `trusted` source of time instead or additionally
