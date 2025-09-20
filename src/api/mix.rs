@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Context as _;
+use anyhow::{anyhow, Context as _};
 use chrono::{DateTime, TimeDelta, Utc};
 use fang::{AsyncQueue, AsyncQueueable};
 use miden_bridge::{
@@ -35,6 +35,8 @@ use crate::{
 
 type MixResult = Result<String, MixerClientError>;
 
+const MAX_NOTES_IN_BATCH: usize = 1024;
+
 #[instrument(skip(data, state))]
 #[post("/mix", data = "<data>")]
 pub async fn post_handler(
@@ -43,28 +45,15 @@ pub async fn post_handler(
 ) -> Result<Json<MixResponse>, EndpointError> {
     let data = data.into_inner();
 
-    let note = Note::try_from(&data)?;
-    info!("Mixing note: {:?}", &note.id());
+    let responses = mix_instantly(vec![data], state).await?;
 
-    let account_id = AccountId::from_hex(&data.account_id).map_err(EndpointError::from)?;
-
-    let (request, response) = oneshot::channel::<MixResult>();
-
-    // send request for mixing to miden
-    state
-        .client
-        .send(MixClientRequest::Mix { note, account_id, response_sink: request })
-        .await
-        .map_err(|e| EndpointError::from(Box::new(e)))?;
-
-    // await for result of mixing
-    let response = response
-        .await
-        .map_err(EndpointError::from)?
-        .map_err(|e| EndpointError::from(Box::new(e)))?;
+    if responses.len() != 1 {
+        return Err(EndpointError::from(anyhow!("expected exactly one response from mixer client")));
+    }
 
     // return tx id
-    Ok(Json(MixResponse { tx_id: response }))
+    let tx_id = (&responses[0]).to_string();
+    Ok(Json(MixResponse { tx_id }))
 }
 
 #[instrument(skip(data, state))]
@@ -72,11 +61,48 @@ pub async fn post_handler(
 pub async fn post_batch_handler(
     data: Json<Vec<MixRequest>>,
     state: &RocketState<MixerState>,
-) -> Result<Json<MixResponse>, EndpointError> {
+) -> Result<Json<Vec<MixResponse>>, EndpointError> {
     let data = data.into_inner();
 
+    let responses = mix_instantly(data, state).await?;
+
     // return tx id
-    Ok(Json(MixResponse { tx_id: response }))
+    let responses = responses.into_iter().map(|tx_id| MixResponse { tx_id }).collect();
+    Ok(Json(responses))
+}
+
+async fn mix_instantly(reqs: Vec<MixRequest>, state: &RocketState<MixerState>) -> Result<Vec<String>, EndpointError> {
+    let mut responses = Vec::new();
+
+    if reqs.len() > MAX_NOTES_IN_BATCH {
+        return Err(EndpointError::BatchLimit);
+    }
+    
+    for req in reqs {
+        let note = Note::try_from(&req)?;
+        info!("Mixing note: {:?}", &note.id());
+
+        let account_id = AccountId::from_hex(&req.account_id).map_err(EndpointError::from)?;
+
+        let (request, response) = oneshot::channel::<MixResult>();
+
+        // send request for mixing to miden
+        state
+            .client
+            .send(MixClientRequest::Mix { note, account_id, response_sink: request })
+            .await
+            .map_err(|e| EndpointError::from(Box::new(e)))?;
+
+        // await for result of mixing
+        let response = response
+            .await
+            .map_err(EndpointError::from)?
+            .map_err(|e| EndpointError::from(Box::new(e)))?;
+
+        responses.push(response);
+    }
+    
+    Ok(responses)
 }
 
 #[post("/mix/delayed", data = "<data>")]
