@@ -30,6 +30,8 @@ pub enum EndpointError {
     TaskQueue(String),
     #[error("Note not found")]
     NoteNotFound(String),
+    #[error("Batch size exceeds the limit")]
+    BatchLimit,
     #[error("Unknown source error")]
     Unknown { source: anyhow::Error },
 }
@@ -92,6 +94,11 @@ impl<'r, 'o: 'r> response::Responder<'r, 'o> for EndpointError {
                 response::status::Custom(Status::InternalServerError, error_message).respond_to(req)
             },
             EndpointError::NoteNotFound(_) => Status::NotFound.respond_to(req),
+            EndpointError::BatchLimit => {
+                let error_message =
+                    Json(json!({"error": format!("{}", EndpointError::BatchLimit.to_string())}));
+                response::status::Custom(Status::BadRequest, error_message).respond_to(req)
+            },
             EndpointError::Unknown { source } => {
                 let error_message =
                     Json(json!({"error": format!("An unknown error occurred - {source}")}));
