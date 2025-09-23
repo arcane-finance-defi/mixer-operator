@@ -25,17 +25,14 @@ use uuid::Uuid;
 use super::error::EndpointError;
 use crate::{
     db::models::{
-        NoteRepository,
-        notes::{FullNote, NoteStatus},
+        notes::{FullNote, NoteStatus}, NoteRepository
     },
-    mixer::{MixClientRequest, client::MixerClientError},
+    mixer::{client::MixerClientError, MixClientRequest},
     state::MixerState,
-    task::mix::AsyncMixTask,
+    task::AsyncMixTask, MAX_NOTES_IN_BATCH_TRANSACTION,
 };
 
 type MixResult = Result<String, MixerClientError>;
-
-const MAX_NOTES_IN_BATCH: usize = 1024;
 
 #[instrument(skip(data, state))]
 #[post("/mix", data = "<data>")]
@@ -153,7 +150,7 @@ async fn mix_instantly(
 ) -> Result<Vec<String>, EndpointError> {
     let mut responses = Vec::new();
 
-    if reqs.len() > MAX_NOTES_IN_BATCH {
+    if reqs.len() > MAX_NOTES_IN_BATCH_TRANSACTION {
         return Err(EndpointError::BatchLimit);
     }
 

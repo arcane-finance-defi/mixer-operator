@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use notes::{FullNote, NoteStatus};
 use thiserror::Error;
@@ -67,11 +68,20 @@ pub trait NoteRepository: Send + Sync {
         new_status: NoteStatus,
     ) -> Result<(), NoteRepositoryError>;
 
+    /// Retrieves `FullNote`s from repository by status bitmask
     async fn get_notes_by_status(
         &self,
         req_status: NoteStatus,
     ) -> Result<Vec<FullNote>, NoteRepositoryError>;
+
+    /// Retrieves `FullNote`s from repository by status bitmask and scheduled date <= `date`
+    async fn get_notes_by_status_and_date(
+        &self,
+        req_status: NoteStatus,
+        date: DateTime<Utc>,
+    ) -> Result<Vec<FullNote>, NoteRepositoryError>;
 }
+
 
 #[async_trait::async_trait]
 impl NoteRepository for DatabaseStorage {
@@ -198,6 +208,37 @@ impl NoteRepository for DatabaseStorage {
                             .sql(" = ")
                             .bind::<Integer, _>(req_status),
                     )
+                    .load::<FullNote>(conn)
+            })
+            .await
+            .map_err(NoteRepositoryErrorGeneric::new)?
+            .map_err(NoteRepositoryErrorGeneric::new)?;
+
+        Ok(result)
+    }
+
+    async fn get_notes_by_status_and_date(
+        &self,
+        req_status: NoteStatus,
+        date: DateTime<Utc>,
+    ) -> Result<Vec<FullNote>, NoteRepositoryError> {
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+
+        use diesel::{
+            dsl::sql,
+            sql_types::{Bool, Integer},
+        };
+        use crate::db::schema::notes::dsl as schema_dsl;
+        let result = conn
+            .interact(move |conn| {
+                schema::notes::table
+                    .filter(
+                        sql::<Bool>("status & ")
+                            .bind::<Integer, _>(req_status)
+                            .sql(" = ")
+                            .bind::<Integer, _>(req_status),
+                    )
+                    .filter(schema_dsl::scheduled_datetime.le(date.naive_utc()))
                     .load::<FullNote>(conn)
             })
             .await
