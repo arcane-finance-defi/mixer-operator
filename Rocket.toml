@@ -7,7 +7,7 @@ port = 8001
 rpc_url = "https://rpc.testnet.miden.io"
 rpc_timeout_ms = 10000
 internal_queue_size = 100
-public_account_ids = "0x3452929efc547b20092a889ba8d0b2"
+public_account_ids = "0x4de3bc8d67731a2067af0fcc7a2e34"
 event_loop_timeout_ms = 1000
 
 [default.db]
@@ -16,4 +16,4 @@ url = "notes.db"
 [default.tq]
 db_url = "postgresql://login:password@domain.com:9000"
 workers_max = 1 
- 
+

@@ -45,6 +45,6 @@ uuid = "1.18.1"
 typetag = "0.2.20"
 
 miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", branch = "main", features = ["std"] }
-miden-client = { version = "0.11.3", features = ["tonic", "sqlite"] }
-miden-objects = "0.11.2"
+miden-client = { version = "0.11.6", features = ["tonic", "sqlite"] }
+miden-objects = "0.11.3"
 schemars = "1.0.4"
