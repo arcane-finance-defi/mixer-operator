@@ -1,4 +1,3 @@
-use std::env::VarError;
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
@@ -60,7 +59,7 @@ fn test_usdc_mixing_flow() {
     let amount = (transfer_amount * 1_000_000.0) as u128;
 
     let address = run("cast", &["wallet", "address", "--private-key", &privatekey]);
-    println!("Sender: {}", address);
+    println!("Sender: {address}");
 
     let balance = run("cast", &["balance", &address, "--rpc-url", sepolia_rpc_url])
         .parse::<u128>().unwrap();
@@ -82,7 +81,7 @@ fn test_usdc_mixing_flow() {
         usdc_address, "approve(address,uint256)", bridge_address, &amount.to_string(),
     ]);
     let approve_tx_id = run("cast", &["publish", "--async", "-r", sepolia_rpc_url, &approve_tx]);
-    println!("Approval tx id: {}", approve_tx_id);
+    println!("Approval tx id: {approve_tx_id}");
     describe_evm_tx(&approve_tx_id, sepolia_rpc_url);
 
     sleep(Duration::from_secs(40));
@@ -93,7 +92,7 @@ fn test_usdc_mixing_flow() {
         "--dest-chain", "11155111",
         "--dest-address", &receiver_address,
     ]);
-    println!("{}", recipient_response);
+    println!("{recipient_response}");
 
     let hexes: Vec<_> = recipient_response
         .split_whitespace()
@@ -116,11 +115,11 @@ fn test_usdc_mixing_flow() {
         recipient, "false",
     ]);
     let bridge_tx_id = run("cast", &["publish", "--async", "-r", sepolia_rpc_url, &bridge_tx]);
-    println!("Bridge tx id: {}", bridge_tx_id);
+    println!("Bridge tx id: {bridge_tx_id}");
     describe_evm_tx(&bridge_tx_id, sepolia_rpc_url);
 
     for i in 1..=5 {
-        println!("Waiting relayer attempt {}/5...", i);
+        println!("Waiting relayer attempt {i}/5...");
         sleep(Duration::from_secs(180));
 
         let mix = Command::new("miden-bridge")
