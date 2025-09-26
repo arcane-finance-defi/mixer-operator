@@ -14,14 +14,12 @@ use tokio::sync::oneshot;
 
 use crate::{
     db::{
-        DatabaseStorage,
         models::{
-            NoteRepository,
-            notes::{FullNote, NoteStatus},
-        },
+            notes::{FullNote, NoteStatus}, NoteRepository
+        }, DatabaseStorage
     },
-    mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
-    task::worker::mixer_client_sender,
+    mixer::{client::MixerClientError, MixClientRequest, MixerClientSender},
+    task::worker::mixer_client_sender, MAX_NOTES_IN_BATCH_TRANSACTION,
 };
 
 struct AsyncMixBatchTaskError(anyhow::Error);
@@ -50,9 +48,17 @@ impl AsyncRunnable for AsyncMixBatchTask {
 
         // TODO:
         // 1. Get ready notes by status and schedule, and not in processing currently by scheduled mix worker
-        todo!();
+        let now = Utc::now();
+        let notes = super::storage::poll_for_ready_notes(&(*db), now)
+            .await
+            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e.to_string())))?;
+        notes.truncate(MAX_NOTES_IN_BATCH_TRANSACTION);
         // 2. Batch them to transactions by MAX_NOTES_IN_BATCH_TRANSACTION size
-        todo!();
+        let note_ids: Vec<_> = notes.iter().map(|note| note.note_id.as_str()).collect();
+        super::storage::set_note_processing(&(*db), &note_ids)
+            .await
+            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("set_note_processing {}", e.to_string())))?;
+        
         // 3. Check progress and mark executed notes ready 
         todo!();
         // task_id is effectively request_id in the storage
@@ -133,4 +139,27 @@ impl From<AsyncMixBatchTaskError> for FangError {
     fn from(err: AsyncMixBatchTaskError) -> Self {
         FangError { description: format!("mix batch err {:#?}", err.0) }
     }
+}
+
+// TODO: probably should be move out to trait like `Mixer`
+#[tracing::instrument(skip(client, notes))]
+pub async fn mix_batch(
+    client: MixerClientSender,
+    notes: Vec<(Note, AccountId)>,
+) -> anyhow::Result<(Vec<NoteId>, String)> {
+    for (note, account_id) in notes {
+        let note_id = note.id();
+        tracing::info!("Executor trying to mix {note_id}");
+
+        let (request, response) = oneshot::channel::<Result<String, MixerClientError>>();
+
+        client
+            .send(MixClientRequest::Mix { note, account_id, response_sink: request })
+            .await?;
+
+        // await for result of mixing
+        let tx_id = response.await?.with_context(|| format!("internal mixer error for {note_id}"))?;
+    }
+
+    Ok((note_id, tx_id))
 }
