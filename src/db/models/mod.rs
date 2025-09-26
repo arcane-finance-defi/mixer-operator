@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::{prelude::*, result::Error::NotFound};
+use diesel::{prelude::*};
 use notes::{FullNote, NoteStatus};
 use thiserror::Error;
 
@@ -98,7 +98,7 @@ pub trait NoteRepository: Send + Sync {
     async fn get_note_status_by_id(&self, note_id: &str)
     -> Result<NoteStatus, NoteRepositoryError>;
 
-    async fn get_note_status_by_ids(&self, note_ids: Vec<String>)
+    async fn get_note_status_by_ids(&self, note_ids: &Vec<String>)
     -> Result<Vec<NoteStatus>, NoteRepositoryError>;
 
     async fn update_note_status_by_id(
@@ -209,10 +209,11 @@ impl NoteRepository for DatabaseStorage {
 
     /// Get notes statuses in one transaction
     /// Resulting statuses vector is guaranteed to be in the same order as input `note_ids` 
-    async fn get_note_status_by_ids(&self, note_ids: Vec<String>)
+    async fn get_note_status_by_ids(&self, note_ids: &Vec<String>)
     -> Result<Vec<NoteStatus>, NoteRepositoryError> {
         let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
+        let note_ids = note_ids.clone();
         let result = conn
             .interact(|conn| {
                 conn.transaction(|conn| {

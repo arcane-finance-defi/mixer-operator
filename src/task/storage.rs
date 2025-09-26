@@ -25,22 +25,25 @@ pub(super) async fn poll_for_ready_notes(storage: &dyn NoteRepository, date: Dat
     Ok(notes)
 }
 
-// TODO: должен устанавливать статус одной транзакцией сразу на все ноты
 pub(super) async fn set_note_processing(storage: &dyn NoteRepository, note_ids: &[&str]) -> anyhow::Result<()> {
-    for note_id in note_ids {
-        let status = match storage.get_note_status_by_id(note_id).await {
-            Ok(status) => status,
-            Err(err) => bail!("set_note_processing fetch status error {err:#?}"),
-        };
+    let note_ids: Vec<String> = note_ids.iter().map(|n| n.to_string()).collect(); 
+    let statuses = match storage.get_note_status_by_ids(&note_ids).await {
+        Ok(status) => status,
+        Err(err) => bail!("set_note_processing fetch status error {err:#?}"),
+    };
 
-        if status & NoteStatus::PROCESSING == NoteStatus::PROCESSING {
-            bail!("note {note_id} already in processing");
+    let mut new_statuses: Vec<_> = Vec::with_capacity(statuses.len());
+    for (idx, status) in statuses.iter().enumerate() {
+        if *status & NoteStatus::PROCESSING != NoteStatus::PROCESSING {
+            let new_status = *status | NoteStatus::PROCESSING;
+            new_statuses.push((note_ids[idx].to_string(), new_status));
+        } else {
+            bail!("note {} already in processing", note_ids[idx]);
         }
+    }
 
-        let new_status = status | NoteStatus::PROCESSING;
-        if let Err(err) = storage.update_note_status_by_id(note_id, new_status).await {
-            bail!("unable to update processing status for {note_id} with error {err:#?}");
-        }
+    if let Err(err) = storage.update_note_status_by_ids(new_statuses).await {
+        bail!("unable to update processing status with error {err:#?}");
     }
     Ok(())
 }

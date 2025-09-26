@@ -45,28 +45,27 @@ impl AsyncMixBatchTask {
 impl AsyncRunnable for AsyncMixBatchTask {
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
         let db = DatabaseStorage::note_storage().await.map_err(AsyncMixBatchTaskError)?;
-
-        // TODO:
-        // 1. Get ready notes by status and schedule, and not in processing currently by scheduled mix worker
+        
+        // 1. Get ready notes by status and current date
+        //    and set status to PROCESSING
         let now = Utc::now();
         let notes = super::storage::poll_for_ready_notes(&(*db), now)
             .await
-            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e.to_string())))?;
+            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e)))?;
+        
         notes.truncate(MAX_NOTES_IN_BATCH_TRANSACTION);
-        // 2. Batch them to transactions by MAX_NOTES_IN_BATCH_TRANSACTION size
+
         let note_ids: Vec<_> = notes.iter().map(|note| note.note_id.as_str()).collect();
         super::storage::set_note_processing(&(*db), &note_ids)
             .await
-            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("set_note_processing {}", e.to_string())))?;
+            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("set_note_processing {}", e)))?;
         
-        // 3. Check progress and mark executed notes ready 
+        // TODO:
+        // 2. Batch them to transactions 
+        
+        // 3. Check progress and mark executed notes ready, rollback if errors
         todo!();
-        // task_id is effectively request_id in the storage
-        let note_record = db
-            .get_note_by_request_id(&self.task_id)
-            .await
-            .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("note repo {}", e.to_string())))?;
-
+        
         tracing::trace!("Unpacking note record");
         let FullNote { note_id, note, account_id, .. } = note_record;
 
