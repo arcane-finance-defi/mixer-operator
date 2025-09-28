@@ -15,6 +15,7 @@ use crate::{
     mixer::client::{MixerClient, MixerClientError},
 };
 
+mod bridge;
 pub mod client;
 pub mod utils;
 

@@ -292,7 +292,7 @@ fn fill_note_record(
         note: serialized_note,
         account_id,
         // ! for now just leave status blank to prevent from execution by executor
-        status: models::NoteStatus::UNDEFINED,
+        status: models::NoteStatus::UNDEFINED, // TODO: del
         scheduled_datetime: Some(scheduled_date.naive_utc()),
         request_id: Some(request_id.to_owned()),
     })

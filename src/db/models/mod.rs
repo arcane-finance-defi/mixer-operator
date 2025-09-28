@@ -137,8 +137,8 @@ impl NoteRepository for DatabaseStorage {
                 diesel::insert_into(schema::notes::table).values(&note).execute(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
@@ -159,8 +159,8 @@ impl NoteRepository for DatabaseStorage {
                     .optional()
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?)
     }
@@ -178,8 +178,8 @@ impl NoteRepository for DatabaseStorage {
                     .optional()
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(req_id.to_string()))?)
     }
@@ -200,8 +200,8 @@ impl NoteRepository for DatabaseStorage {
                     .optional()
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         let result = result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?;
         Ok(result.status)
@@ -292,8 +292,8 @@ impl NoteRepository for DatabaseStorage {
                     .execute(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
@@ -323,8 +323,8 @@ impl NoteRepository for DatabaseStorage {
                     .load::<FullNote>(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         Ok(result)
     }
@@ -354,8 +354,8 @@ impl NoteRepository for DatabaseStorage {
                     .load::<FullNote>(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+        .map_err(NoteRepositoryError::from)?;
 
         Ok(result)
     }

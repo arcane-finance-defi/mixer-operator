@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use diesel::{Connection as _, PgConnection};
 use fang::{AsyncQueue, asynk::async_worker_pool::AsyncWorkerPool, run_migrations_postgres};
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, OnceCell};
 
-use crate::mixer::MixerClientSender;
+use crate::mixer::{MixerClientSender};
 
 static MIXER_SENDER: OnceCell<MixerClientSender> = OnceCell::const_new();
 

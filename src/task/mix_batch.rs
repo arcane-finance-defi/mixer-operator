@@ -49,7 +49,7 @@ impl AsyncRunnable for AsyncMixBatchTask {
         // 1. Get ready notes by status and current date
         //    and set status to PROCESSING
         let now = Utc::now();
-        let notes = super::storage::poll_for_ready_notes(&(*db), now)
+        let mut notes = super::storage::poll_for_ready_notes(&(*db), now)
             .await
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e)))?;
         
@@ -65,10 +65,11 @@ impl AsyncRunnable for AsyncMixBatchTask {
         
         // 3. Check progress and mark executed notes ready, rollback if errors
         todo!();
-        
+        /*
         tracing::trace!("Unpacking note record");
         let FullNote { note_id, note, account_id, .. } = note_record;
 
+        // TODO: impl from_str for note and account_id
         let note_bytes = hex::decode(note)
             .with_context(|| format!("decoding from hex string note {note_id}"))
             .map_err(AsyncMixBatchTaskError)?;
@@ -101,6 +102,7 @@ impl AsyncRunnable for AsyncMixBatchTask {
                 Err(AsyncMixBatchTaskError(err).into())
             },
         }
+         */
     }
     // this func is optional
     // Default task_type is common
@@ -140,7 +142,7 @@ impl From<AsyncMixBatchTaskError> for FangError {
     }
 }
 
-// TODO: probably should be move out to trait like `Mixer`
+// Order is guaranteed
 #[tracing::instrument(skip(client, notes))]
 pub async fn mix_batch(
     client: MixerClientSender,
@@ -160,5 +162,6 @@ pub async fn mix_batch(
         let tx_id = response.await?.with_context(|| format!("internal mixer error for {note_id}"))?;
     }
 
-    Ok((note_id, tx_id))
+    // Ok((note_id, tx_id))
+    todo!();
 }
