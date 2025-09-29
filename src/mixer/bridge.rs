@@ -1,29 +1,23 @@
-/// ! 
-/// ! Module mainly re-exporting bridge functions and utils
-/// ! 
-
-use thiserror::Error;
-
-use miden_objects::{
-    NoteError, Word, ZERO,
-    asset::Asset,
-    note::{
-        Note, NoteAssets, NoteExecutionHint, NoteFile, NoteId, NoteInputs, NoteMetadata,
-        NoteRecipient, NoteType,
-    },
-};
-
-/// 
+///
 /// Bridge re-export
-/// 
 pub(super) use miden_bridge::{
     accounts::token_wrapper::bridge_note_tag,
     notes::bridge::{bridge, croschain},
 };
+use miden_objects::{
+    NoteError, Word, ZERO,
+    asset::Asset,
+    note::{
+        Note, NoteAssets, NoteExecutionHint, NoteInputs, NoteMetadata, NoteRecipient, NoteType,
+    },
+};
+/// !
+/// ! Module mainly re-exporting bridge functions and utils
+/// !
+use thiserror::Error;
 
 ///
 /// Utilities
-/// 
 #[derive(Error, Debug)]
 pub enum PublicNoteConstructorError {
     #[error("Fungible asset in the crosschain note is not found")]
@@ -34,8 +28,9 @@ pub enum PublicNoteConstructorError {
     MalformedSerialNumber(),
 }
 
-
-pub fn get_public_bridge_output_note(input_note: &Note) -> Result<Note, PublicNoteConstructorError> {
+pub fn get_public_bridge_output_note(
+    input_note: &Note,
+) -> Result<Note, PublicNoteConstructorError> {
     let crosschain_asset = input_note
         .assets()
         .iter()

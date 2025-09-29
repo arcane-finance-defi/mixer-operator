@@ -2,15 +2,17 @@ use std::{path::PathBuf, sync::Arc};
 
 use glob::glob;
 use miden_client::{
-    auth::BasicAuthenticator, rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient}, store::{sqlite_store::SqliteStore, Store}, transaction::{TransactionId, TransactionRequestBuilder, TransactionRequestError}, Client as MidenClient, ClientError as MidenClientError, ExecutionOptions
+    Client as MidenClient, ClientError as MidenClientError, ExecutionOptions,
+    auth::BasicAuthenticator,
+    rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient},
+    store::{Store, sqlite_store::SqliteStore},
+    transaction::{TransactionId, TransactionRequestBuilder, TransactionRequestError},
 };
 use miden_objects::{
     AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word,
     account::{AccountFile, AccountId},
     crypto::rand::RpoRandomCoin,
-    note::{
-        Note, NoteFile, NoteId,
-    },
+    note::{Note, NoteFile, NoteId},
     utils::{Deserializable, DeserializationError},
 };
 use rand::{Rng, rng, rngs::StdRng};
@@ -18,9 +20,8 @@ use thiserror::Error;
 use tokio::fs::read;
 use tracing::info;
 
+use super::bridge::{PublicNoteConstructorError, croschain, get_public_bridge_output_note};
 use crate::MAX_NOTES_IN_BATCH_TRANSACTION;
-
-use super::bridge::{ croschain, get_public_bridge_output_note, PublicNoteConstructorError };
 
 const DEFAULT_STORAGE_FILE: &str = "store.db";
 
@@ -218,7 +219,8 @@ impl MixerClient {
         Ok(self.rpc.get_note_by_id(note_id).await.is_ok())
     }
 
-    // TODO: result type should not neglect about individual note failures, so we can identify errorneous notes and ignore them 
+    // TODO: result type should not neglect about individual note failures, so we can identify
+    // errorneous notes and ignore them
     pub async fn mix_batch(
         &mut self,
         notes: Vec<Note>,
@@ -230,17 +232,15 @@ impl MixerClient {
 
         self.check_crosschain_notes(&notes).await?;
         self.check_accounts_manageable(&vec![account_id]).await?;
-        
+
         // import notes to client store
         let note_ids = self.import_notes(&notes).await?;
         // reconstruct expected note from the bridge
-        let expected_bridge_notes: Vec<Note> = notes.iter().map(|note| get_public_bridge_output_note(note)).collect::<Result<Vec<_>, _>>()?;
-        let expected_output_recipients = expected_bridge_notes
-            .iter()
-            .map(|note| note.recipient())
-            .cloned()
-            .collect();
-        
+        let expected_bridge_notes: Vec<Note> =
+            notes.iter().map(get_public_bridge_output_note).collect::<Result<Vec<_>, _>>()?;
+        let expected_output_recipients =
+            expected_bridge_notes.iter().map(|note| note.recipient()).cloned().collect();
+
         // sync state
         self.client.sync_state().await?;
 
@@ -278,14 +278,17 @@ impl MixerClient {
         Ok(())
     }
 
-    async fn check_accounts_manageable(&mut self, account_ids: &Vec<AccountId>) -> Result<(), MixerClientError> {
+    async fn check_accounts_manageable(
+        &mut self,
+        account_ids: &Vec<AccountId>,
+    ) -> Result<(), MixerClientError> {
         self.client.sync_state().await?;
 
         for account_id in account_ids {
             let account = self.client.try_get_account(*account_id).await;
 
             if let Err(MidenClientError::AccountDataNotFound(_)) = account {
-                return Err(MixerClientError::NotManageableAccountError(account_id.to_hex()))
+                return Err(MixerClientError::NotManageableAccountError(account_id.to_hex()));
             };
         }
 
@@ -304,7 +307,7 @@ impl MixerClient {
                 NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
 
             let note_id = self.client.import_note(note_file).await?;
-            
+
             note_ids.push(note_id);
         }
 
@@ -316,6 +319,7 @@ impl MixerClient {
 mod test {
     use miden_client::note::BlockNumber;
     use tempfile::NamedTempFile;
+
     use super::*;
 
     struct Fixture {
@@ -328,10 +332,10 @@ mod test {
     impl Fixture {
         // fn from_env() -> Self {
         //     dotenvy::dotenv().ok();
-        //     let rpc_url = std::env::var("MO_TEST_RPC_ENDPOINT_URL").expect("Missing MO_RPC_ENDPOINT_URL");
-        //     let store_file = NamedTempFile::new().expect("NamedTempFile");
-        //     Fixture::new(rpc_url, store_file)
-        // }
+        //     let rpc_url = std::env::var("MO_TEST_RPC_ENDPOINT_URL").expect("Missing
+        // MO_RPC_ENDPOINT_URL");     let store_file =
+        // NamedTempFile::new().expect("NamedTempFile");     Fixture::new(rpc_url,
+        // store_file) }
 
         fn from_config() -> Self {
             let config = rocket::Config::figment()
@@ -345,14 +349,19 @@ mod test {
             let store_file = NamedTempFile::new().expect("NamedTempFile");
 
             Fixture::new(
-                config.client().rpc_url(), 
+                config.client().rpc_url(),
                 store_file,
                 config.client().private_account_dir(),
                 config.client().public_account_ids(),
             )
         }
 
-        fn new(rpc_url: String, store_file: NamedTempFile, private_account_dir: PathBuf, public_account_ids: Vec<String>) -> Self {
+        fn new(
+            rpc_url: String,
+            store_file: NamedTempFile,
+            private_account_dir: PathBuf,
+            public_account_ids: Vec<String>,
+        ) -> Self {
             Fixture {
                 rpc_url,
                 store_file,
@@ -371,7 +380,7 @@ mod test {
 
         pub fn store_file_path(&self) -> PathBuf {
             self.store_file.path().to_path_buf()
-        } 
+        }
 
         pub fn private_account_dir(&self) -> PathBuf {
             self.private_account_dir.clone()
@@ -381,7 +390,7 @@ mod test {
             self.public_account_ids.clone()
         }
     }
-    
+
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rpc_get_block_with_tokio_rt() {
         let fixture = Fixture::from_config();
@@ -398,9 +407,7 @@ mod test {
     async fn test_client_sync_state_with_tokio_rt() {
         let fixture = Fixture::from_config();
 
-        let store = SqliteStore::new(fixture.store_file_path())
-            .await
-            .expect("SqliteStore::new");
+        let store = SqliteStore::new(fixture.store_file_path()).await.expect("SqliteStore::new");
 
         let store = Arc::new(store);
 
@@ -439,21 +446,15 @@ mod test {
     async fn test_mixer_client_with_tokio_rt() {
         let fixture = Fixture::from_config();
 
-        let mut mixer_client = MixerClient::new(
-                fixture.rpc_url(),
-                fixture.rpc_timeout_ms(),
-                None,
-                true,
-            )
-            .await
-            .expect("MixerClient::new");
+        let mut mixer_client =
+            MixerClient::new(fixture.rpc_url(), fixture.rpc_timeout_ms(), None, true)
+                .await
+                .expect("MixerClient::new");
 
-        mixer_client.initialize(
-            fixture.private_account_dir(),
-            fixture.public_account_ids()
-        )
-        .await
-        .expect("mixer_client.initialize");
+        mixer_client
+            .initialize(fixture.private_account_dir(), fixture.public_account_ids())
+            .await
+            .expect("mixer_client.initialize");
 
         // TODO: to test mix(), need to create `note` and `account_id` somehow
         // let note = Note::new();

@@ -101,7 +101,7 @@ pub fn event_loop(
                 let result = runtime.block_on(client.mix_batch(notes, account_id));
                 tracing::info!("MixerClient::MixBatch {result:#?}");
                 response_sink.send(result).expect("response_sink mix_batch send");
-            }
+            },
 
             None => {
                 tracing::warn!("Channel closed");

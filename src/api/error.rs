@@ -120,7 +120,9 @@ impl From<crate::db::models::NoteRepositoryError> for EndpointError {
         use crate::db::models::NoteRepositoryError;
         match derr {
             NoteRepositoryError::NotFound(smth) => EndpointError::NoteNotFound(smth),
-            NoteRepositoryError::MoreThanOneRowAffected => EndpointError::InternalStorage(derr.to_string()),
+            NoteRepositoryError::MoreThanOneRowAffected => {
+                EndpointError::InternalStorage(derr.to_string())
+            },
             NoteRepositoryError::Internal(e) => EndpointError::InternalStorage(e.to_string()),
             NoteRepositoryError::InteractDeadpool(s) => EndpointError::InternalStorage(s),
         }

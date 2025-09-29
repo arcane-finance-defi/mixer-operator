@@ -1,13 +1,18 @@
 use anyhow::bail;
-use chrono::{ Utc, DateTime };
+use chrono::{DateTime, Utc};
 use miden_objects::note::NoteId;
-use crate::db::models::{ 
-    notes::{FullNote, NoteStatus}, NoteRepository
+
+use crate::db::models::{
+    NoteRepository,
+    notes::{FullNote, NoteStatus},
 };
 
 // ! with incorrect usage will clear any other flags
 #[tracing::instrument(skip(storage))]
-pub(super) async fn set_note_txed(storage: &dyn NoteRepository, note_id: NoteId) -> anyhow::Result<()> {
+pub(super) async fn set_note_txed(
+    storage: &dyn NoteRepository,
+    note_id: NoteId,
+) -> anyhow::Result<()> {
     match storage.update_note_status_by_id(&note_id.to_string(), NoteStatus::TXED).await {
         Ok(_) => Ok(()),
         Err(err) => bail!("update notes status error {err:#?}"),
@@ -15,19 +20,25 @@ pub(super) async fn set_note_txed(storage: &dyn NoteRepository, note_id: NoteId)
 }
 
 #[tracing::instrument(skip(storage, note_ids))]
-pub(super) async fn set_notes_txed(storage: &dyn NoteRepository, note_ids: &Vec<&str>) -> anyhow::Result<()> {
-    let id_and_statuses: Vec<(_, _)> = note_ids.iter().map(|id| (id.to_string(), NoteStatus::TXED)).collect(); 
+pub(super) async fn set_notes_txed(
+    storage: &dyn NoteRepository,
+    note_ids: &Vec<&str>,
+) -> anyhow::Result<()> {
+    let id_and_statuses: Vec<(_, _)> =
+        note_ids.iter().map(|id| (id.to_string(), NoteStatus::TXED)).collect();
     if let Err(err) = storage.update_note_status_by_ids(id_and_statuses).await {
         bail!("unable to update txed status with error {err:#?}");
     }
     Ok(())
 }
 
-
 #[tracing::instrument(skip(storage))]
-pub(super) async fn poll_for_ready_notes(storage: &dyn NoteRepository, date: DateTime<Utc>) -> anyhow::Result<Vec<FullNote>> {
+pub(super) async fn poll_for_ready_notes(
+    storage: &dyn NoteRepository,
+    date: DateTime<Utc>,
+) -> anyhow::Result<Vec<FullNote>> {
     let status = NoteStatus::ACCEPTED & !NoteStatus::TXED & !NoteStatus::PROCESSING;
-    
+
     let notes = match storage.get_notes_by_status_and_date(status, date).await {
         Ok(notes) => notes,
         Err(err) => bail!("reading notes storage error {err:#?}"),
@@ -36,8 +47,12 @@ pub(super) async fn poll_for_ready_notes(storage: &dyn NoteRepository, date: Dat
     Ok(notes)
 }
 
-pub(super) async fn set_note_processing(storage: &dyn NoteRepository, note_ids: &[&str], processing: bool) -> anyhow::Result<()> {
-    let note_ids: Vec<String> = note_ids.iter().map(|n| n.to_string()).collect(); 
+pub(super) async fn set_note_processing(
+    storage: &dyn NoteRepository,
+    note_ids: &[&str],
+    processing: bool,
+) -> anyhow::Result<()> {
+    let note_ids: Vec<String> = note_ids.iter().map(|n| n.to_string()).collect();
     let statuses = match storage.get_note_status_by_ids(&note_ids).await {
         Ok(status) => status,
         Err(err) => bail!("set_note_processing fetch status error {err:#?}"),

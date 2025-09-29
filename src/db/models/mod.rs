@@ -1,11 +1,10 @@
 use chrono::{DateTime, Utc};
-use diesel::{prelude::*};
+use diesel::prelude::*;
 use notes::{FullNote, NoteStatus};
 use thiserror::Error;
 
-use crate::db::models::notes::NoteDetails;
-
 use super::{DatabaseStorage, schema};
+use crate::db::models::notes::NoteDetails;
 
 pub mod notes;
 
@@ -38,13 +37,14 @@ impl From<diesel::result::Error> for NoteRepositoryError {
         match error {
             // TODO:
             // diesel::result::Error::InvalidCString(nul_error) => todo!(),
-            // diesel::result::Error::DatabaseError(database_error_kind, database_error_information) => todo!(),
+            // diesel::result::Error::DatabaseError(database_error_kind, database_error_information)
+            // => todo!(),
             diesel::result::Error::NotFound => NoteRepositoryError::NotFound(String::new()),
             // diesel::result::Error::QueryBuilderError(error) => todo!(),
             // diesel::result::Error::DeserializationError(error) => todo!(),
             // diesel::result::Error::SerializationError(error) => todo!(),
-            // diesel::result::Error::RollbackErrorOnCommit { rollback_error, commit_error } => todo!(),
-            // diesel::result::Error::RollbackTransaction => todo!(),
+            // diesel::result::Error::RollbackErrorOnCommit { rollback_error, commit_error } =>
+            // todo!(), diesel::result::Error::RollbackTransaction => todo!(),
             // diesel::result::Error::AlreadyInTransaction => todo!(),
             // diesel::result::Error::NotInTransaction => todo!(),
             // diesel::result::Error::BrokenTransactionManager => todo!(),
@@ -57,10 +57,13 @@ impl From<deadpool_diesel::InteractError> for NoteRepositoryError {
     fn from(error: deadpool_diesel::InteractError) -> Self {
         use deadpool_diesel::InteractError;
         match error {
-            InteractError::Panic(erased_type) => 
-                NoteRepositoryError::InteractDeadpool(format!("pool: {}", InteractError::Panic(erased_type))),
-            InteractError::Aborted => 
-                NoteRepositoryError::InteractDeadpool(format!("pool: {}", InteractError::Aborted)),
+            InteractError::Panic(erased_type) => NoteRepositoryError::InteractDeadpool(format!(
+                "pool: {}",
+                InteractError::Panic(erased_type)
+            )),
+            InteractError::Aborted => {
+                NoteRepositoryError::InteractDeadpool(format!("pool: {}", InteractError::Aborted))
+            },
         }
     }
 }
@@ -98,8 +101,11 @@ pub trait NoteRepository: Send + Sync {
     async fn get_note_status_by_id(&self, note_id: &str)
     -> Result<NoteStatus, NoteRepositoryError>;
 
-    async fn get_note_status_by_ids(&self, note_ids: &Vec<String>)
-    -> Result<Vec<NoteStatus>, NoteRepositoryError>;
+    #[allow(clippy::ptr_arg)] // TODO: fix this warning
+    async fn get_note_status_by_ids(
+        &self,
+        note_ids: &Vec<String>,
+    ) -> Result<Vec<NoteStatus>, NoteRepositoryError>;
 
     async fn update_note_status_by_id(
         &self,
@@ -126,7 +132,6 @@ pub trait NoteRepository: Send + Sync {
     ) -> Result<Vec<FullNote>, NoteRepositoryError>;
 }
 
-
 #[async_trait::async_trait]
 impl NoteRepository for DatabaseStorage {
     async fn add_note(&self, note: FullNote) -> Result<(), NoteRepositoryError> {
@@ -138,7 +143,7 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
@@ -160,7 +165,7 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?)
     }
@@ -179,7 +184,7 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(req_id.to_string()))?)
     }
@@ -201,23 +206,25 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         let result = result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?;
         Ok(result.status)
     }
 
     /// Get notes statuses in one transaction
-    /// Resulting statuses vector is guaranteed to be in the same order as input `note_ids` 
-    async fn get_note_status_by_ids(&self, note_ids: &Vec<String>)
-    -> Result<Vec<NoteStatus>, NoteRepositoryError> {
+    /// Resulting statuses vector is guaranteed to be in the same order as input `note_ids`
+    async fn get_note_status_by_ids(
+        &self,
+        note_ids: &Vec<String>,
+    ) -> Result<Vec<NoteStatus>, NoteRepositoryError> {
         let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
         let note_ids = note_ids.clone();
         let result = conn
             .interact(|conn| {
                 conn.transaction(|conn| {
-                
+
                 let mut statuses: Vec<NoteStatus> = Vec::with_capacity(note_ids.len());
 
                 for note_id in note_ids {
@@ -228,7 +235,7 @@ impl NoteRepository for DatabaseStorage {
                         .first::<NoteDetails>(conn)?;
                     statuses.push(note.status);
                 }
-                
+
                 // That uses `diesel::result::Error` as error type
                 // you can use any other error type here as long as
                 // it implements `From<diesel::result::Error>`.
@@ -240,7 +247,7 @@ impl NoteRepository for DatabaseStorage {
         .map_err(NoteRepositoryError::from)?
         // and this maps the diesel error
         .map_err(NoteRepositoryError::from)?;
-        
+
         Ok(result)
     }
 
@@ -250,28 +257,31 @@ impl NoteRepository for DatabaseStorage {
     ) -> Result<(), NoteRepositoryError> {
         let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
 
-        use diesel::result::{QueryResult, Error};
-        use crate::db::schema::notes::dsl::{notes as db_notes, status as db_status, note_id as db_note_id};
+        use diesel::result::{Error, QueryResult};
+
+        use crate::db::schema::notes::dsl::{
+            note_id as db_note_id, notes as db_notes, status as db_status,
+        };
         let result = conn
             .interact(|conn| {
                 conn.transaction(|conn| {
-
-                for (new_note_id, new_status) in note_id_statuses {
-                    let rows_affected = diesel::update(db_notes.filter(db_note_id.eq(new_note_id)))
-                        .set(db_status.eq(new_status))
-                        .execute(conn)?;
-                    if rows_affected != 1 {
-                        // TODO: should return actual error, not generic RollbackTransaction 
-                        return QueryResult::Err(Error::RollbackTransaction);
+                    for (new_note_id, new_status) in note_id_statuses {
+                        let rows_affected =
+                            diesel::update(db_notes.filter(db_note_id.eq(new_note_id)))
+                                .set(db_status.eq(new_status))
+                                .execute(conn)?;
+                        if rows_affected != 1 {
+                            // TODO: should return actual error, not generic RollbackTransaction
+                            return QueryResult::Err(Error::RollbackTransaction);
+                        }
                     }
-                }
-                QueryResult::Ok(())
+                    QueryResult::Ok(())
+                })
             })
-        })
-        .await
-        .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
-        
+            .await
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
+
         Ok(result)
     }
 
@@ -293,7 +303,7 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
@@ -324,7 +334,7 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result)
     }
@@ -340,6 +350,7 @@ impl NoteRepository for DatabaseStorage {
             dsl::sql,
             sql_types::{Bool, Integer},
         };
+
         use crate::db::schema::notes::dsl as schema_dsl;
         let result = conn
             .interact(move |conn| {
@@ -355,7 +366,7 @@ impl NoteRepository for DatabaseStorage {
             })
             .await
             .map_err(NoteRepositoryError::from)?
-        .map_err(NoteRepositoryError::from)?;
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result)
     }

@@ -24,12 +24,14 @@ use uuid::Uuid;
 
 use super::error::EndpointError;
 use crate::{
+    MAX_NOTES_IN_BATCH_TRANSACTION,
     db::models::{
-        notes::{FullNote, NoteStatus}, NoteRepository
+        NoteRepository,
+        notes::{FullNote, NoteStatus},
     },
-    mixer::{client::MixerClientError, MixClientRequest},
+    mixer::{MixClientRequest, client::MixerClientError},
     state::MixerState,
-    task::AsyncMixTask, MAX_NOTES_IN_BATCH_TRANSACTION,
+    task::AsyncMixTask,
 };
 
 type MixResult = Result<String, MixerClientError>;

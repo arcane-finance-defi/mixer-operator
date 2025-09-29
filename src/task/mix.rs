@@ -13,13 +13,7 @@ use miden_objects::{
 use tokio::sync::oneshot;
 
 use crate::{
-    db::{
-        DatabaseStorage,
-        models::{
-            NoteRepository,
-            notes::{FullNote, NoteStatus},
-        },
-    },
+    db::{DatabaseStorage, models::notes::FullNote},
     mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
     task::worker::mixer_client_sender,
 };

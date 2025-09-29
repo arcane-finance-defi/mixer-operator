@@ -5,23 +5,16 @@ use fang::{
     asynk::async_queue::AsyncQueueable,
     serde::{Deserialize, Serialize},
 };
-
 use miden_objects::{
-    account::AccountId,
-    note::{Note, NoteId},
-    transaction::TransactionId,
-    utils::Deserializable,
+    account::AccountId, note::Note, transaction::TransactionId, utils::Deserializable,
 };
 use tokio::sync::oneshot;
 
 use crate::{
-    db::{
-        models::{
-            notes::FullNote,
-        }, DatabaseStorage
-    },
-    mixer::{client::MixerClientError, MixClientRequest, MixerClientSender},
-    task::worker::mixer_client_sender, MAX_NOTES_IN_BATCH_TRANSACTION,
+    MAX_NOTES_IN_BATCH_TRANSACTION,
+    db::{DatabaseStorage, models::notes::FullNote},
+    mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
+    task::worker::mixer_client_sender,
 };
 
 struct AsyncMixBatchTaskError(anyhow::Error);
@@ -47,38 +40,41 @@ impl AsyncMixBatchTask {
 impl AsyncRunnable for AsyncMixBatchTask {
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
         let db = DatabaseStorage::note_storage().await.map_err(AsyncMixBatchTaskError)?;
-        
-        // 1. Get ready notes by status and current date
-        //    and set status to PROCESSING
+
+        // 1. Get ready notes by status and current date and set status to PROCESSING
         let now = Utc::now();
         let notes = super::storage::poll_for_ready_notes(&(*db), now)
             .await
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e)))?;
-        
-        // TODO: group notes somehow by account_id and execute in separate transactions 
+
+        // TODO: group notes somehow by account_id and execute in separate transactions
         let account_id = notes[0].account_id.clone();
-        let mut notes: Vec<_> = notes.into_iter().filter(|note| note.account_id == account_id).collect();
-        
+        let mut notes: Vec<_> =
+            notes.into_iter().filter(|note| note.account_id == account_id).collect();
+
         notes.truncate(MAX_NOTES_IN_BATCH_TRANSACTION);
 
         let note_ids: Vec<_> = notes.iter().map(|note| note.note_id.as_str()).collect();
         super::storage::set_note_processing(&(*db), &note_ids, true)
             .await
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("set_note_processing {}", e)))?;
-        
-        // 2. Batch to single transaction to first note acount_id
-        //    clear PROCESSING status if there are errors
+
+        // 2. Batch to single transaction to first note acount_id clear PROCESSING status if there
+        //    are errors
         tracing::debug!("Converting from FullNote to Miden Note");
-        let notes = notes.iter().map(|fullnote| {
-            let FullNote { note_id, note, .. } = fullnote;
-            let note_bytes = hex::decode(note)
-                .with_context(|| format!("decoding from hex string note {note_id}"))
-                .map_err(AsyncMixBatchTaskError)?;
-            let note = Note::read_from_bytes(note_bytes.as_slice())
-                .with_context(|| format!("reading note from bytes for {note_id}"))
-                .map_err(AsyncMixBatchTaskError)?;
-            Ok(note)
-        }).collect::<Result<Vec<_>, AsyncMixBatchTaskError>>()?;
+        let notes = notes
+            .iter()
+            .map(|fullnote| {
+                let FullNote { note_id, note, .. } = fullnote;
+                let note_bytes = hex::decode(note)
+                    .with_context(|| format!("decoding from hex string note {note_id}"))
+                    .map_err(AsyncMixBatchTaskError)?;
+                let note = Note::read_from_bytes(note_bytes.as_slice())
+                    .with_context(|| format!("reading note from bytes for {note_id}"))
+                    .map_err(AsyncMixBatchTaskError)?;
+                Ok(note)
+            })
+            .collect::<Result<Vec<_>, AsyncMixBatchTaskError>>()?;
 
         tracing::debug!("Converting from String to Miden AccountId");
         let faucet_id = AccountId::from_hex(&account_id)
@@ -88,35 +84,34 @@ impl AsyncRunnable for AsyncMixBatchTask {
         let client = mixer_client_sender().map_err(AsyncMixBatchTaskError)?;
         let tx_id = match mix_batch(client.clone(), notes, faucet_id)
             .await
-            .with_context(|| "async mix task worker is mixing note {}") 
+            .with_context(|| "async mix task worker is mixing note {}")
         {
             Ok(tx_id) => tx_id,
             Err(error) => {
                 tracing::error!("Error when trying to batch mix to {account_id}: {error:#?}");
-                
+
                 tracing::debug!("Reset notes status");
                 // ! if it fails, notes will be locked up by their status
-                super::storage::set_note_processing(&(*db), &note_ids, true)
-                    .await
-                    .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("reset_note_processing {}", e)))?;
-                
-                return Err(AsyncMixBatchTaskError(anyhow::anyhow!("mix_batch internal client error: {error:#?}")).into());
+                super::storage::set_note_processing(&(*db), &note_ids, true).await.map_err(
+                    |e| AsyncMixBatchTaskError(anyhow::anyhow!("reset_note_processing {}", e)),
+                )?;
+
+                return Err(AsyncMixBatchTaskError(anyhow::anyhow!(
+                    "mix_batch internal client error: {error:#?}"
+                ))
+                .into());
             },
-        };        
+        };
         tracing::info!("Completed mix for account_id={account_id} with tx_id={tx_id}");
 
         match super::storage::set_notes_txed(&*db, &note_ids).await {
             Ok(_) => {
-                tracing::info!(
-                    "Successfully save state for txed notes tx_id={tx_id}"
-                );
+                tracing::info!("Successfully save state for txed notes tx_id={tx_id}");
                 // TODO: should we save processed tx_id somewhere for tracing?
                 Ok(())
             },
             Err(err) => {
-                tracing::error!(
-                    "Failed to save txed notes tx_id={tx_id} because {err:#?}"
-                );
+                tracing::error!("Failed to save txed notes tx_id={tx_id} because {err:#?}");
                 Err(AsyncMixBatchTaskError(err).into())
             },
         }
@@ -152,7 +147,9 @@ impl AsyncRunnable for AsyncMixBatchTask {
 
 impl From<AsyncMixBatchTaskError> for FangError {
     fn from(err: AsyncMixBatchTaskError) -> Self {
-        FangError { description: format!("mix batch err {:#?}", err.0) }
+        FangError {
+            description: format!("mix batch err {:#?}", err.0),
+        }
     }
 }
 
@@ -168,11 +165,17 @@ pub async fn mix_batch(
     let (request, response) = oneshot::channel::<Result<TransactionId, MixerClientError>>();
 
     client
-        .send(MixClientRequest::MixBatch { notes, account_id, response_sink: request })
+        .send(MixClientRequest::MixBatch {
+            notes,
+            account_id,
+            response_sink: request,
+        })
         .await?;
 
     // await for result of mixing
-    let tx_id = response.await?.with_context(|| format!("internal mix batch error for {account_id}"))?;
+    let tx_id = response
+        .await?
+        .with_context(|| format!("internal mix batch error for {account_id}"))?;
 
     Ok(tx_id.to_string())
 }
