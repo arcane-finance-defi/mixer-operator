@@ -5,9 +5,11 @@ use fang::{
     asynk::async_queue::AsyncQueueable,
     serde::{Deserialize, Serialize},
 };
+
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteId},
+    transaction::TransactionId,
     utils::Deserializable,
 };
 use tokio::sync::oneshot;
@@ -15,7 +17,7 @@ use tokio::sync::oneshot;
 use crate::{
     db::{
         models::{
-            notes::{FullNote, NoteStatus}, NoteRepository
+            notes::FullNote,
         }, DatabaseStorage
     },
     mixer::{client::MixerClientError, MixClientRequest, MixerClientSender},
@@ -49,60 +51,75 @@ impl AsyncRunnable for AsyncMixBatchTask {
         // 1. Get ready notes by status and current date
         //    and set status to PROCESSING
         let now = Utc::now();
-        let mut notes = super::storage::poll_for_ready_notes(&(*db), now)
+        let notes = super::storage::poll_for_ready_notes(&(*db), now)
             .await
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e)))?;
+        
+        // TODO: group notes somehow by account_id and execute in separate transactions 
+        let account_id = notes[0].account_id.clone();
+        let mut notes: Vec<_> = notes.into_iter().filter(|note| note.account_id == account_id).collect();
         
         notes.truncate(MAX_NOTES_IN_BATCH_TRANSACTION);
 
         let note_ids: Vec<_> = notes.iter().map(|note| note.note_id.as_str()).collect();
-        super::storage::set_note_processing(&(*db), &note_ids)
+        super::storage::set_note_processing(&(*db), &note_ids, true)
             .await
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("set_note_processing {}", e)))?;
         
-        // TODO:
-        // 2. Batch them to transactions 
-        
-        // 3. Check progress and mark executed notes ready, rollback if errors
-        todo!();
-        /*
-        tracing::trace!("Unpacking note record");
-        let FullNote { note_id, note, account_id, .. } = note_record;
+        // 2. Batch to single transaction to first note acount_id
+        //    clear PROCESSING status if there are errors
+        tracing::debug!("Converting from FullNote to Miden Note");
+        let notes = notes.iter().map(|fullnote| {
+            let FullNote { note_id, note, .. } = fullnote;
+            let note_bytes = hex::decode(note)
+                .with_context(|| format!("decoding from hex string note {note_id}"))
+                .map_err(AsyncMixBatchTaskError)?;
+            let note = Note::read_from_bytes(note_bytes.as_slice())
+                .with_context(|| format!("reading note from bytes for {note_id}"))
+                .map_err(AsyncMixBatchTaskError)?;
+            Ok(note)
+        }).collect::<Result<Vec<_>, AsyncMixBatchTaskError>>()?;
 
-        // TODO: impl from_str for note and account_id
-        let note_bytes = hex::decode(note)
-            .with_context(|| format!("decoding from hex string note {note_id}"))
-            .map_err(AsyncMixBatchTaskError)?;
-        let note = Note::read_from_bytes(note_bytes.as_slice())
-            .with_context(|| format!("reading note from bytes for {note_id}"))
-            .map_err(AsyncMixBatchTaskError)?;
+        tracing::debug!("Converting from String to Miden AccountId");
         let faucet_id = AccountId::from_hex(&account_id)
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("{e}")))?;
 
-        tracing::trace!("Obtaining mixer client sender");
+        tracing::debug!("Obtaining mixer client sender");
         let client = mixer_client_sender().map_err(AsyncMixBatchTaskError)?;
-        // TODO: should lock note to avoid inclusion to batch transaction by mix_batch
-        let (note_id, tx_id) = mix(client.clone(), note, faucet_id)
+        let tx_id = match mix_batch(client.clone(), notes, faucet_id)
             .await
-            .with_context(|| "async mix task worker is mixing note {}")
-            .map_err(AsyncMixBatchTaskError)?;
-        tracing::info!("Completed mix for note_id={note_id} tx_id={tx_id}");
+            .with_context(|| "async mix task worker is mixing note {}") 
+        {
+            Ok(tx_id) => tx_id,
+            Err(error) => {
+                tracing::error!("Error when trying to batch mix to {account_id}: {error:#?}");
+                
+                tracing::debug!("Reset notes status");
+                // ! if it fails, notes will be locked up by their status
+                super::storage::set_note_processing(&(*db), &note_ids, true)
+                    .await
+                    .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("reset_note_processing {}", e)))?;
+                
+                return Err(AsyncMixBatchTaskError(anyhow::anyhow!("mix_batch internal client error: {error:#?}")).into());
+            },
+        };        
+        tracing::info!("Completed mix for account_id={account_id} with tx_id={tx_id}");
 
-        match super::storage::set_note_txed(&*db, note_id).await {
+        match super::storage::set_notes_txed(&*db, &note_ids).await {
             Ok(_) => {
                 tracing::info!(
-                    "Successfully save state for txed note note_id={note_id} tx_id={tx_id}"
+                    "Successfully save state for txed notes tx_id={tx_id}"
                 );
+                // TODO: should we save processed tx_id somewhere for tracing?
                 Ok(())
             },
             Err(err) => {
                 tracing::error!(
-                    "Failed to save txed note note_id={note_id} tx_id={tx_id} because {err:#?}"
+                    "Failed to save txed notes tx_id={tx_id} because {err:#?}"
                 );
                 Err(AsyncMixBatchTaskError(err).into())
             },
         }
-         */
     }
     // this func is optional
     // Default task_type is common
@@ -116,21 +133,18 @@ impl AsyncRunnable for AsyncMixBatchTask {
         true
     }
 
-    // This will be useful if you would like to schedule tasks.
-    // default value is None (the task is not scheduled, it's just executed as soon as it's
-    // inserted)
+    // Every 10 seconds
     fn cron(&self) -> Option<Scheduled> {
         let cron_schedule = "*/10 * * * * * *";
         Some(Scheduled::CronPattern(cron_schedule.to_string()))
     }
 
-    // the maximum number of retries. Set it to 0 to make it not retriable
+    // The maximum number of retries. Set it to 0 to make it not retriable
     // the default value is 20
     fn max_retries(&self) -> i32 {
         20
     }
 
-    // backoff mode for retries in seconds?
     fn backoff(&self, attempt: u32) -> u32 {
         u32::pow(2, attempt)
     }
@@ -142,26 +156,23 @@ impl From<AsyncMixBatchTaskError> for FangError {
     }
 }
 
-// Order is guaranteed
-#[tracing::instrument(skip(client, notes))]
+// TODO: probably should be move out to trait like `Mixer`
+#[tracing::instrument(skip(client, notes, account_id))]
 pub async fn mix_batch(
     client: MixerClientSender,
-    notes: Vec<(Note, AccountId)>,
-) -> anyhow::Result<(Vec<NoteId>, String)> {
-    for (note, account_id) in notes {
-        let note_id = note.id();
-        tracing::info!("Executor trying to mix {note_id}");
+    notes: Vec<Note>,
+    account_id: AccountId,
+) -> anyhow::Result<String> {
+    tracing::info!("Executor trying to mix batch for {account_id}");
 
-        let (request, response) = oneshot::channel::<Result<String, MixerClientError>>();
+    let (request, response) = oneshot::channel::<Result<TransactionId, MixerClientError>>();
 
-        client
-            .send(MixClientRequest::Mix { note, account_id, response_sink: request })
-            .await?;
+    client
+        .send(MixClientRequest::MixBatch { notes, account_id, response_sink: request })
+        .await?;
 
-        // await for result of mixing
-        let tx_id = response.await?.with_context(|| format!("internal mixer error for {note_id}"))?;
-    }
+    // await for result of mixing
+    let tx_id = response.await?.with_context(|| format!("internal mix batch error for {account_id}"))?;
 
-    // Ok((note_id, tx_id))
-    todo!();
+    Ok(tx_id.to_string())
 }

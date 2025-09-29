@@ -5,6 +5,7 @@ use crate::db::models::{
     notes::{FullNote, NoteStatus}, NoteRepository
 };
 
+// ! with incorrect usage will clear any other flags
 #[tracing::instrument(skip(storage))]
 pub(super) async fn set_note_txed(storage: &dyn NoteRepository, note_id: NoteId) -> anyhow::Result<()> {
     match storage.update_note_status_by_id(&note_id.to_string(), NoteStatus::TXED).await {
@@ -12,6 +13,16 @@ pub(super) async fn set_note_txed(storage: &dyn NoteRepository, note_id: NoteId)
         Err(err) => bail!("update notes status error {err:#?}"),
     }
 }
+
+#[tracing::instrument(skip(storage, note_ids))]
+pub(super) async fn set_notes_txed(storage: &dyn NoteRepository, note_ids: &Vec<&str>) -> anyhow::Result<()> {
+    let id_and_statuses: Vec<(_, _)> = note_ids.iter().map(|id| (id.to_string(), NoteStatus::TXED)).collect(); 
+    if let Err(err) = storage.update_note_status_by_ids(id_and_statuses).await {
+        bail!("unable to update txed status with error {err:#?}");
+    }
+    Ok(())
+}
+
 
 #[tracing::instrument(skip(storage))]
 pub(super) async fn poll_for_ready_notes(storage: &dyn NoteRepository, date: DateTime<Utc>) -> anyhow::Result<Vec<FullNote>> {
@@ -25,7 +36,7 @@ pub(super) async fn poll_for_ready_notes(storage: &dyn NoteRepository, date: Dat
     Ok(notes)
 }
 
-pub(super) async fn set_note_processing(storage: &dyn NoteRepository, note_ids: &[&str]) -> anyhow::Result<()> {
+pub(super) async fn set_note_processing(storage: &dyn NoteRepository, note_ids: &[&str], processing: bool) -> anyhow::Result<()> {
     let note_ids: Vec<String> = note_ids.iter().map(|n| n.to_string()).collect(); 
     let statuses = match storage.get_note_status_by_ids(&note_ids).await {
         Ok(status) => status,
@@ -34,11 +45,22 @@ pub(super) async fn set_note_processing(storage: &dyn NoteRepository, note_ids: 
 
     let mut new_statuses: Vec<_> = Vec::with_capacity(statuses.len());
     for (idx, status) in statuses.iter().enumerate() {
-        if *status & NoteStatus::PROCESSING != NoteStatus::PROCESSING {
-            let new_status = *status | NoteStatus::PROCESSING;
-            new_statuses.push((note_ids[idx].to_string(), new_status));
+        if processing {
+            // set PROCESSING bit
+            if *status & NoteStatus::PROCESSING != NoteStatus::PROCESSING {
+                let new_status = *status | NoteStatus::PROCESSING;
+                new_statuses.push((note_ids[idx].to_string(), new_status));
+            } else {
+                bail!("note #{idx} {} already IN processing", note_ids[idx]);
+            }
         } else {
-            bail!("note {} already in processing", note_ids[idx]);
+            // reset PROCESSING bit
+            if *status & NoteStatus::PROCESSING != NoteStatus::PROCESSING {
+                tracing::error!("note #{idx} {} already NOT IN processing", note_ids[idx]);
+                tracing::error!("reset bitflag anyway");
+            }
+            let new_status = *status & !NoteStatus::PROCESSING;
+            new_statuses.push((note_ids[idx].to_string(), new_status));
         }
     }
 

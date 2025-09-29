@@ -5,13 +5,11 @@ use miden_client::{
     auth::BasicAuthenticator, rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient}, store::{sqlite_store::SqliteStore, Store}, transaction::{TransactionId, TransactionRequestBuilder, TransactionRequestError}, Client as MidenClient, ClientError as MidenClientError, ExecutionOptions
 };
 use miden_objects::{
-    AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, NoteError, Word, ZERO,
+    AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word,
     account::{AccountFile, AccountId},
-    asset::Asset,
     crypto::rand::RpoRandomCoin,
     note::{
-        Note, NoteAssets, NoteExecutionHint, NoteFile, NoteId, NoteInputs, NoteMetadata,
-        NoteRecipient, NoteType,
+        Note, NoteFile, NoteId,
     },
     utils::{Deserializable, DeserializationError},
 };
@@ -19,6 +17,8 @@ use rand::{Rng, rng, rngs::StdRng};
 use thiserror::Error;
 use tokio::fs::read;
 use tracing::info;
+
+use crate::MAX_NOTES_IN_BATCH_TRANSACTION;
 
 use super::bridge::{ croschain, get_public_bridge_output_note, PublicNoteConstructorError };
 
@@ -41,6 +41,8 @@ pub enum MixerClientError {
     InvalidNoteTypeError(),
     #[error("Not manageable account {0}")]
     NotManageableAccountError(String),
+    #[error("Too many notes for signle transaction")]
+    TransactionNotesLimit(),
     #[error(transparent)]
     TransactionRequestError(#[from] TransactionRequestError),
     #[error("Wrong input note script root")]
@@ -216,56 +218,43 @@ impl MixerClient {
         Ok(self.rpc.get_note_by_id(note_id).await.is_ok())
     }
 
+    // TODO: result type should not neglect about individual note failures, so we can identify errorneous notes and ignore them 
     pub async fn mix_batch(
         &mut self,
-        note_pairs: Vec<(Note, AccountId)>,
-    ) -> Result<Vec<TransactionId>, MixerClientError> {
-        let notes: Vec<_> = note_pairs.iter().map(|n| n.0).collect();
-        let account_ids: Vec<_> = note_pairs.iter().map(|n| n.1).collect();
+        notes: Vec<Note>,
+        account_id: AccountId,
+    ) -> Result<TransactionId, MixerClientError> {
+        if notes.len() > MAX_NOTES_IN_BATCH_TRANSACTION {
+            return Err(MixerClientError::TransactionNotesLimit());
+        }
 
         self.check_crosschain_notes(&notes).await?;
-        self.check_accounts_manageable(&account_ids).await?;
-
-        //TODO:
-        todo!()
+        self.check_accounts_manageable(&vec![account_id]).await?;
+        
+        // import notes to client store
+        let note_ids = self.import_notes(&notes).await?;
         // reconstruct expected note from the bridge
-        let expected_bridge_note = get_public_bridge_output_note(&note)?;
-
-        // sync state with blockchain
-        self.client.sync_state().await?;
-
-        // obtain a cryptographic proof that note exists within the blockchain's state
-        let fetched_note = self.rpc.get_note_by_id(note.id()).await?;
-
-        let note_file =
-            NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
-
-        let note_id = self.client.import_note(note_file).await?;
-
-        // obtain account to consume to
-        let account = self.client.try_get_account(account_id).await;
-
-        // TODO: errors cast
-        if let Err(MidenClientError::AccountDataNotFound(_)) = account {
-            Err(MixerClientError::NotManageableAccountError(account_id.to_hex()))
-        } else {
-            Ok(())
-        }?;
-
-        // TODO: client is needed only for submitting transaction,
+        let expected_bridge_notes: Vec<Note> = notes.iter().map(|note| get_public_bridge_output_note(note)).collect::<Result<Vec<_>, _>>()?;
+        let expected_output_recipients = expected_bridge_notes
+            .iter()
+            .map(|note| note.recipient())
+            .cloned()
+            .collect();
+        
         // sync state
         self.client.sync_state().await?;
 
+        info!("Execute transaction");
         let tx = self
             .client
             .new_transaction(
                 account_id,
                 TransactionRequestBuilder::new()
-                    .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
-                    .build_consume_notes(vec![note_id])?,
+                    .expected_output_recipients(expected_output_recipients)
+                    .build_consume_notes(note_ids)?,
             )
             .await?;
-        info!("Built transaction");
+        info!("Transaction finished");
 
         let tx_id = tx.executed_transaction().id();
 
@@ -274,7 +263,7 @@ impl MixerClient {
 
         self.cleanup().await?;
 
-        Ok(tx_id.to_hex())
+        Ok(tx_id)
     }
 
     async fn check_crosschain_notes(&mut self, notes: &Vec<Note>) -> Result<(), MixerClientError> {
@@ -301,6 +290,25 @@ impl MixerClient {
         }
 
         Ok(())
+    }
+
+    async fn import_notes(&mut self, notes: &Vec<Note>) -> Result<Vec<NoteId>, MixerClientError> {
+        self.client.sync_state().await?;
+
+        let mut note_ids = Vec::new();
+        for note in notes {
+            // obtain a cryptographic proof that note exists within the blockchain's state
+            let fetched_note = self.rpc.get_note_by_id(note.id()).await?;
+
+            let note_file =
+                NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
+
+            let note_id = self.client.import_note(note_file).await?;
+            
+            note_ids.push(note_id);
+        }
+
+        Ok(note_ids)
     }
 }
 

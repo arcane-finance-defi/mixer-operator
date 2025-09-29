@@ -3,6 +3,7 @@ use std::time::Duration;
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteId},
+    transaction::TransactionId,
 };
 use tokio::{
     runtime::Runtime,
@@ -30,6 +31,11 @@ pub enum MixClientRequest {
         note: Note,
         account_id: AccountId,
         response_sink: MixerClientResponse<String>,
+    },
+    MixBatch {
+        notes: Vec<Note>,
+        account_id: AccountId,
+        response_sink: MixerClientResponse<TransactionId>,
     },
     Poll {
         note_id: NoteId,
@@ -90,6 +96,12 @@ pub fn event_loop(
                 tracing::info!("MixerClient::Poll {result:#?}");
                 response_sink.send(result).unwrap();
             },
+
+            Some(MixClientRequest::MixBatch { notes, account_id, response_sink }) => {
+                let result = runtime.block_on(client.mix_batch(notes, account_id));
+                tracing::info!("MixerClient::MixBatch {result:#?}");
+                response_sink.send(result).expect("response_sink mix_batch send");
+            }
 
             None => {
                 tracing::warn!("Channel closed");
