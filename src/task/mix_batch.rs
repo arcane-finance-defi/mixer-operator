@@ -46,6 +46,10 @@ impl AsyncRunnable for AsyncMixBatchTask {
         let notes = super::storage::poll_for_ready_notes(&(*db), now)
             .await
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e)))?;
+        
+        if notes.is_empty() {
+            return Ok(());
+        }
 
         // TODO: group notes somehow by account_id and execute in separate transactions
         let account_id = notes[0].account_id.clone();

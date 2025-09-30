@@ -36,35 +36,79 @@ use crate::{
 
 type MixResult = Result<String, MixerClientError>;
 
-#[instrument(skip(data, state))]
+#[instrument(skip(data, state, note_repo))]
 #[post("/mix", data = "<data>")]
 pub async fn post_handler(
     data: Json<MixRequest>,
     state: &RocketState<MixerState>,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
 ) -> Result<Json<MixResponse>, EndpointError> {
     let data = data.into_inner();
-    let responses = mix_instantly(vec![data], state).await?;
-    if responses.len() != 1 {
-        return Err(EndpointError::from(anyhow!(
-            "expected exactly one response from mixer client"
-        )));
+    let is_instant = data.instant;
+
+    if is_instant {
+        let responses = mix_instantly(vec![data], state).await?;
+        if responses.len() != 1 {
+            return Err(EndpointError::from(anyhow!(
+                "expected exactly one response from mixer client"
+            )));
+        }
+        // return tx id
+        let tx_id = responses[0].to_string();
+        Ok(Json(MixResponse::Instant { tx_id: vec![tx_id] }))
+    } else {
+        let note = Note::try_from(&data)?;
+        let full_note =
+            fill_note_record(note, data.account_id, None, None)?;
+        add_to_note_repo(vec![full_note], note_repo).await?;
+        Ok(Json(MixResponse::Empty))
     }
-    // return tx id
-    let tx_id = responses[0].to_string();
-    Ok(Json(MixResponse { tx_id }))
 }
 
-#[instrument(skip(data, state))]
+#[instrument(skip(data, state, note_repo))]
 #[post("/mix/batch", data = "<data>")]
 pub async fn post_batch_handler(
-    data: Json<Vec<MixRequest>>,
+    data: Json<BatchMixRequest>,
     state: &RocketState<MixerState>,
-) -> Result<Json<Vec<MixResponse>>, EndpointError> {
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
+) -> Result<Json<MixResponse>, EndpointError> {
     let data = data.into_inner();
-    let responses = mix_instantly(data, state).await?;
-    // return tx id
-    let responses = responses.into_iter().map(|tx_id| MixResponse { tx_id }).collect();
-    Ok(Json(responses))
+    let is_instant = data.instant;
+
+    if is_instant {
+        let mut mix_reqs: Vec<MixRequest> = Vec::with_capacity(data.metadata.len());
+        for req in data.metadata {
+            mix_reqs.push(MixRequest { 
+                dest_chain_id: req.dest_chain_id, 
+                dest_address: req.dest_address, 
+                serial_num_hex: req.serial_num_hex, 
+                bridge_serial_num_hex: req.bridge_serial_num_hex, 
+                amount: req.dest_chain_id, 
+                account_id: req.account_id, 
+                instant: data.instant 
+            });
+        }
+        let responses = mix_instantly(mix_reqs, state).await?;
+        // return tx id
+        let responses = MixResponse::Instant { tx_id: responses };
+        Ok(Json(responses))
+    } else {
+        let notes: Vec<Note> = data.metadata
+            .iter()
+            .map(Note::try_from)
+            .collect::<Result<Vec<_>,anyhow::Error>>()?;
+        let full_notes = notes
+            .into_iter()
+            .enumerate()
+            .map(|(idx, note)| {
+                let fullnote = fill_note_record(note, data.metadata[idx].account_id.clone(), Some(Utc::now()), None)?;
+                Ok(fullnote)
+            })
+            .collect::<Result<Vec<_>,anyhow::Error>>()?;
+        add_to_note_repo(full_notes, note_repo).await?;
+        
+        Ok(Json(MixResponse::Empty))
+    }
 }
 
 #[post("/mix/delayed", data = "<data>")]
@@ -129,7 +173,7 @@ async fn mix_delayed(
         let note = Note::try_from(&req)?;
         let note_id = &note.id();
         let full_note =
-            fill_note_record(note, req.account_id, scheduled_at, &request_id.to_string())?;
+            fill_note_record(note, req.account_id, Some(scheduled_at), Some(&request_id.to_string()))?;
 
         info!("Schedule delayed mixing for note {note_id:?} {request_id} at {scheduled_at}");
 
@@ -183,6 +227,23 @@ async fn mix_instantly(
     Ok(responses)
 }
 
+// TODO: add all notes in one transaction
+async fn add_to_note_repo(
+    notes: Vec<FullNote>,
+    note_repo: &RocketState<Arc<dyn NoteRepository>>
+) -> Result<(), EndpointError> {
+    for note in notes {
+        let note_id = note.note_id.clone();
+        tracing::info!("Store note {note_id}");
+
+        note_repo
+            .add_note(note)
+            .await
+            .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
+    }
+    Ok(())
+}
+
 // TODO: maybe we should use `trusted` source of time instead or additionally
 fn schedule_after(delay_ms: u64) -> anyhow::Result<DateTime<Utc>> {
     let now: DateTime<Utc> = Utc::now();
@@ -192,6 +253,8 @@ fn schedule_after(delay_ms: u64) -> anyhow::Result<DateTime<Utc>> {
     Ok(scheduled_datetime)
 }
 
+// ! Deprecated request, should be deleted in next release 
+// #[deprecated] // clippy
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct MixRequest {
@@ -201,12 +264,33 @@ pub struct MixRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
+    instant: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
-pub struct MixResponse {
-    tx_id: String,
+pub struct MixMetadata {
+    dest_chain_id: u64,
+    dest_address: String,
+    serial_num_hex: String,
+    bridge_serial_num_hex: String,
+    account_id: String,
+    amount: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct BatchMixRequest {
+    metadata: Vec<MixMetadata>,
+    instant: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub enum MixResponse {
+    Empty,
+    Instant { tx_id: Vec<String> },
+    Delayed { note_id: Vec<String> },
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -276,11 +360,35 @@ impl TryFrom<&MixDelayedRequest> for Note {
     }
 }
 
+impl TryFrom<&MixMetadata> for Note {
+    type Error = anyhow::Error;
+    fn try_from(value: &MixMetadata) -> Result<Self, Self::Error> {
+        let faucet_id = AccountId::from_hex(&value.account_id)?;
+        let note = new_crosschain_note(
+            parse_hex_string_as_word(value.serial_num_hex.as_str())
+                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
+                .into(),
+            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
+                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
+                .into(),
+            Felt::new(value.dest_chain_id),
+            evm_address_to_felts(&value.dest_address)?,
+            None,
+            faucet_id,
+            value.amount,
+            faucet_id,
+            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
+        )?;
+
+        Ok(note)
+    }
+}
+
 fn fill_note_record(
     note: Note,
     account_id: String,
-    scheduled_date: DateTime<Utc>,
-    request_id: &str,
+    scheduled_date: Option<DateTime<Utc>>,
+    request_id: Option<&str>,
 ) -> anyhow::Result<FullNote> {
     use miden_objects::utils::{Serializable as _, ToHex as _};
 
@@ -293,19 +401,21 @@ fn fill_note_record(
         note_id: serialized_note_id,
         note: serialized_note,
         account_id,
-        // ! for now just leave status blank to prevent from execution by executor
+        // ! for now just leave status blank to prevent from execution by legacy executors
         status: models::NoteStatus::UNDEFINED, // TODO: del
-        scheduled_datetime: Some(scheduled_date.naive_utc()),
-        request_id: Some(request_id.to_owned()),
+        scheduled_datetime: scheduled_date.map(|d| d.naive_utc()),
+        request_id: request_id.map(|r| r.to_owned()),
     })
 }
 
 #[cfg(test)]
 mod test {
+    use std::u64;
+
     use rocket::serde::json;
 
     use super::MixRequest;
-    use crate::api::mix::MixDelayedRequest;
+    use crate::api::mix::{BatchMixRequest, MixMetadata, MixDelayedRequest};
 
     #[test]
     fn test_mix_request_json_schema() {
@@ -316,6 +426,7 @@ mod test {
             bridge_serial_num_hex: "0xsomehexbridge".to_string(),
             amount: 50000,
             account_id: "0xsomehex".to_string(),
+            instant: true,
         };
         let expected_request: &str = r#"{
             "dest_chain_id": 112211,
@@ -323,7 +434,60 @@ mod test {
             "serial_num_hex": "0xsomehexserial",
             "bridge_serial_num_hex": "0xsomehexbridge",
             "amount": 50000,
-            "account_id": "0xsomehex"
+            "account_id": "0xsomehex",
+            "instant": true
+            }"#;
+        let expected_request = expected_request.replace("\n", "");
+        let expected_request = expected_request.replace(" ", "");
+
+        let serialized_request = json::to_string(&req).expect("Serialized MixRequest");
+
+        assert_eq!(serialized_request, expected_request);
+    }
+
+    #[test]
+    fn test_mix_batch_request_json_schema() {
+        let req = BatchMixRequest {
+            metadata: vec![
+                MixMetadata {
+                    dest_chain_id: 112211,
+                    dest_address: "0xsomehexdstaddr".to_string(),
+                    serial_num_hex: "0xsomehexserial".to_string(),
+                    bridge_serial_num_hex: "0xsomehexbridge".to_string(),
+                    amount: 50000,
+                    account_id: "0xsomehex".to_string(),
+                },
+                MixMetadata {
+                    dest_chain_id: 112233,
+                    dest_address: "0xsomehexdstaddr2".to_string(),
+                    serial_num_hex: "0xsomehexserial2".to_string(),
+                    bridge_serial_num_hex: "0xsomehexbridge2".to_string(),
+                    amount: u64::MAX,
+                    account_id: "0xsomehex2".to_string(),
+                }
+            ],
+            instant: false,
+        };
+        let expected_request: &str = r#"{
+            "metadata": [
+                {
+                    "dest_chain_id": 112211,
+                    "dest_address": "0xsomehexdstaddr",
+                    "serial_num_hex": "0xsomehexserial",
+                    "bridge_serial_num_hex": "0xsomehexbridge",
+                    "account_id": "0xsomehex",
+                    "amount": 50000
+                },
+                {
+                    "dest_chain_id": 112233,
+                    "dest_address": "0xsomehexdstaddr2",
+                    "serial_num_hex": "0xsomehexserial2",
+                    "bridge_serial_num_hex": "0xsomehexbridge2",
+                    "account_id": "0xsomehex2",
+                    "amount": 18446744073709551615
+                }
+            ],
+            "instant": false
             }"#;
         let expected_request = expected_request.replace("\n", "");
         let expected_request = expected_request.replace(" ", "");
