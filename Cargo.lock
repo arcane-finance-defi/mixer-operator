@@ -2495,6 +2495,7 @@ dependencies = [
  "futures",
  "glob",
  "hex",
+ "itertools",
  "miden-bridge",
  "miden-client",
  "miden-objects",

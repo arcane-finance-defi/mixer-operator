@@ -58,8 +58,7 @@ pub async fn post_handler(
         Ok(Json(MixResponse::Instant { tx_id: vec![tx_id] }))
     } else {
         let note = Note::try_from(&data)?;
-        let full_note =
-            fill_note_record(note, data.account_id, None, None)?;
+        let full_note = fill_note_record(note, data.account_id, None, None)?;
         add_to_note_repo(vec![full_note], note_repo).await?;
         Ok(Json(MixResponse::Empty))
     }
@@ -78,14 +77,14 @@ pub async fn post_batch_handler(
     if is_instant {
         let mut mix_reqs: Vec<MixRequest> = Vec::with_capacity(data.metadata.len());
         for req in data.metadata {
-            mix_reqs.push(MixRequest { 
-                dest_chain_id: req.dest_chain_id, 
-                dest_address: req.dest_address, 
-                serial_num_hex: req.serial_num_hex, 
-                bridge_serial_num_hex: req.bridge_serial_num_hex, 
-                amount: req.dest_chain_id, 
-                account_id: req.account_id, 
-                instant: data.instant 
+            mix_reqs.push(MixRequest {
+                dest_chain_id: req.dest_chain_id,
+                dest_address: req.dest_address,
+                serial_num_hex: req.serial_num_hex,
+                bridge_serial_num_hex: req.bridge_serial_num_hex,
+                amount: req.dest_chain_id,
+                account_id: req.account_id,
+                instant: data.instant,
             });
         }
         let responses = mix_instantly(mix_reqs, state).await?;
@@ -93,20 +92,26 @@ pub async fn post_batch_handler(
         let responses = MixResponse::Instant { tx_id: responses };
         Ok(Json(responses))
     } else {
-        let notes: Vec<Note> = data.metadata
+        let notes: Vec<Note> = data
+            .metadata
             .iter()
             .map(Note::try_from)
-            .collect::<Result<Vec<_>,anyhow::Error>>()?;
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
         let full_notes = notes
             .into_iter()
             .enumerate()
             .map(|(idx, note)| {
-                let fullnote = fill_note_record(note, data.metadata[idx].account_id.clone(), Some(Utc::now()), None)?;
+                let fullnote = fill_note_record(
+                    note,
+                    data.metadata[idx].account_id.clone(),
+                    Some(Utc::now()),
+                    None,
+                )?;
                 Ok(fullnote)
             })
-            .collect::<Result<Vec<_>,anyhow::Error>>()?;
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
         add_to_note_repo(full_notes, note_repo).await?;
-        
+
         Ok(Json(MixResponse::Empty))
     }
 }
@@ -172,8 +177,12 @@ async fn mix_delayed(
 
         let note = Note::try_from(&req)?;
         let note_id = &note.id();
-        let full_note =
-            fill_note_record(note, req.account_id, Some(scheduled_at), Some(&request_id.to_string()))?;
+        let full_note = fill_note_record(
+            note,
+            req.account_id,
+            Some(scheduled_at),
+            Some(&request_id.to_string()),
+        )?;
 
         info!("Schedule delayed mixing for note {note_id:?} {request_id} at {scheduled_at}");
 
@@ -230,7 +239,7 @@ async fn mix_instantly(
 // TODO: add all notes in one transaction
 async fn add_to_note_repo(
     notes: Vec<FullNote>,
-    note_repo: &RocketState<Arc<dyn NoteRepository>>
+    note_repo: &RocketState<Arc<dyn NoteRepository>>,
 ) -> Result<(), EndpointError> {
     for note in notes {
         let note_id = note.note_id.clone();
@@ -253,7 +262,7 @@ fn schedule_after(delay_ms: u64) -> anyhow::Result<DateTime<Utc>> {
     Ok(scheduled_datetime)
 }
 
-// ! Deprecated request, should be deleted in next release 
+// ! Deprecated request, should be deleted in next release
 // #[deprecated] // clippy
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
@@ -410,12 +419,9 @@ fn fill_note_record(
 
 #[cfg(test)]
 mod test {
-    use std::u64;
-
     use rocket::serde::json;
 
-    use super::MixRequest;
-    use crate::api::mix::{BatchMixRequest, MixMetadata, MixDelayedRequest};
+    use super::{BatchMixRequest, MixDelayedRequest, MixMetadata, MixRequest};
 
     #[test]
     fn test_mix_request_json_schema() {
@@ -464,7 +470,7 @@ mod test {
                     bridge_serial_num_hex: "0xsomehexbridge2".to_string(),
                     amount: u64::MAX,
                     account_id: "0xsomehex2".to_string(),
-                }
+                },
             ],
             instant: false,
         };
