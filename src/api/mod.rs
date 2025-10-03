@@ -16,11 +16,11 @@ macro_rules! make_routes {
     };
 }
 
-pub fn routes(mode: RouterMode) -> Vec<rocket::Route> { 
+pub fn routes(mode: RouterMode) -> Vec<rocket::Route> {
     // this macro can cause Rust Analyzer errors
     // refer https://github.com/GREsau/okapi/issues/166
     make_routes!(
-        mode, 
+        mode,
         [
             mix::post_handler,
             mix::post_batch_handler,
@@ -38,11 +38,12 @@ pub fn routes(mode: RouterMode) -> Vec<rocket::Route> {
 }
 
 pub fn swagger() -> Vec<rocket::Route> {
-    use rocket_okapi::swagger_ui::{ make_swagger_ui, SwaggerUIConfig };
+    use rocket_okapi::swagger_ui::{SwaggerUIConfig, make_swagger_ui};
 
     // points at /api/v1 endpoints with relative path from swagger-ui mount point
     make_swagger_ui(&SwaggerUIConfig {
         url: "../../../api/v1/openapi.json".to_owned(),
         ..Default::default()
-    }).into()
+    })
+    .into()
 }

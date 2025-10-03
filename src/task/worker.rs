@@ -28,12 +28,12 @@ pub async fn prepare_task_queue(
         // Max number of connections that are allowed
         .max_pool_size(config.db_max_pool.unwrap_or(3))
         .build();
-    
+
     if !config.enabled {
         tracing::warn!("Task queue was disabled, you should not do it in release");
-        return Ok(queue)
+        return Ok(queue);
     }
-    
+
     do_migration(&config.db_url)?;
 
     // Always connect first in order to perform any operation

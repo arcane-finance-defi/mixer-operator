@@ -3,10 +3,12 @@ use miden_objects::{AccountIdError, utils::DeserializationError};
 use rocket::{
     http::Status,
     response,
-    serde::{Deserialize, Serialize, json::Json, json::json},
+    serde::json::{Json, json},
 };
-use rocket_okapi::{okapi::{self}, response::OpenApiResponderInner, JsonSchema};
-use rocket_okapi::okapi::schemars::{self, Map};
+use rocket_okapi::{
+    okapi::{self},
+    response::OpenApiResponderInner,
+};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
@@ -132,22 +134,23 @@ impl From<crate::db::models::NoteRepositoryError> for EndpointError {
 }
 
 impl OpenApiResponderInner for EndpointError {
-    fn responses(_generator: &mut rocket_okapi::r#gen::OpenApiGenerator) 
-    -> rocket_okapi::Result<rocket_okapi::okapi::openapi3::Responses> {
+    fn responses(
+        _generator: &mut rocket_okapi::r#gen::OpenApiGenerator,
+    ) -> rocket_okapi::Result<rocket_okapi::okapi::openapi3::Responses> {
         let mut responses = rocket_okapi::okapi::openapi3::Responses::default();
         // TODO(kochetkov): if one implemented JsonSchema and/or Serialize for EndpointError
-        // TODO(kochetkov): or convert it to some new type which implemented, then we would have use json_schema
-        // e.g.
+        // TODO(kochetkov): or convert it to some new type which implemented, then we would have use
+        // json_schema e.g.
         // let schema = generator.json_schema::<EndpointError>();
-        // rocket_okapi::util::add_schema_response(&mut responses, 400, "text/plain", schema.clone())?;
+        // rocket_okapi::util::add_schema_response(&mut responses, 400, "text/plain",
+        // schema.clone())?;
         add_400_error(&mut responses);
         add_404_error(&mut responses);
         add_422_error(&mut responses);
         add_500_error(&mut responses);
         Ok(responses)
     }
-} 
-
+}
 
 fn add_400_error(responses: &mut okapi::openapi3::Responses) {
     responses
@@ -208,25 +211,18 @@ fn add_422_error(responses: &mut okapi::openapi3::Responses) {
 }
 
 fn add_500_error(responses: &mut okapi::openapi3::Responses) {
-    responses
-        .responses
-        .entry("500".to_owned())
-        .or_insert_with(|| {
-            let response = okapi::openapi3::Response {
-                description: 
-                    "\
+    responses.responses.entry("500".to_owned()).or_insert_with(|| {
+        let response = okapi::openapi3::Response {
+            description: "\
                     # [500 Internal Server Error]\
                     (https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500)\n\
                     This response is given when the server has an internal error that it could not \
                     recover from.\n\n\
                     If you get this response please report this issue.\
-                    ".to_owned(),
-                ..Default::default()
-            };
-            response.into()
-        });
+                    "
+            .to_owned(),
+            ..Default::default()
+        };
+        response.into()
+    });
 }
-
-
-
-

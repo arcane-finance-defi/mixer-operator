@@ -6,8 +6,10 @@ use rocket::{
     response::Responder,
     serde::{Deserialize, Serialize, json::Json},
 };
-use rocket_okapi::{okapi::schemars, openapi};
-use rocket_okapi::okapi::schemars::JsonSchema;
+use rocket_okapi::{
+    okapi::{schemars, schemars::JsonSchema},
+    openapi,
+};
 
 use super::error::EndpointError;
 use crate::db::models::{NoteRepository, NoteRepositoryError, notes};

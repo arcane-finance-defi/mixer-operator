@@ -17,8 +17,10 @@ use rocket::{
     State as RocketState, get, post,
     serde::{Deserialize, Serialize, json::Json},
 };
-use rocket_okapi::{okapi::schemars, openapi};
-use rocket_okapi::okapi::schemars::JsonSchema;
+use rocket_okapi::{
+    okapi::{schemars, schemars::JsonSchema},
+    openapi,
+};
 use tokio::sync::oneshot;
 use tracing::{info, instrument, trace};
 use uuid::Uuid;
