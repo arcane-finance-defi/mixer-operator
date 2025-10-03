@@ -17,7 +17,8 @@ use rocket::{
     State as RocketState, get, post,
     serde::{Deserialize, Serialize, json::Json},
 };
-use schemars::JsonSchema;
+use rocket_okapi::{okapi::schemars, openapi};
+use rocket_okapi::okapi::schemars::JsonSchema;
 use tokio::sync::oneshot;
 use tracing::{info, instrument, trace};
 use uuid::Uuid;
@@ -36,6 +37,8 @@ use crate::{
 
 type MixResult = Result<String, MixerClientError>;
 
+// #[openapi(tag = "MixResponse")]
+#[openapi(tag = "MixRequest")] //, ignore = "state, note_repo")]
 #[instrument(skip(data, state, note_repo))]
 #[post("/mix", data = "<data>")]
 pub async fn post_handler(
@@ -64,6 +67,7 @@ pub async fn post_handler(
     }
 }
 
+#[openapi]
 #[instrument(skip(data, state, note_repo))]
 #[post("/mix/batch", data = "<data>")]
 pub async fn post_batch_handler(
@@ -116,6 +120,7 @@ pub async fn post_batch_handler(
     }
 }
 
+#[openapi]
 #[post("/mix/delayed", data = "<data>")]
 #[instrument(skip(data, note_repo, task_queue))]
 pub async fn delayed_post_handler(
@@ -134,6 +139,7 @@ pub async fn delayed_post_handler(
     Ok(Json(MixDelayedResponse { request_id }))
 }
 
+#[openapi]
 #[post("/mix/batch/delayed", data = "<data>")]
 #[instrument(skip(data, note_repo, task_queue))]
 pub async fn delayed_post_batch_handler(
@@ -150,6 +156,7 @@ pub async fn delayed_post_batch_handler(
     Ok(Json(responses))
 }
 
+#[openapi]
 #[get("/mix/delayed/status/<id>")]
 #[instrument(skip(note_repo))]
 pub async fn delayed_status_get_handler(

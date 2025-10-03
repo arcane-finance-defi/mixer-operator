@@ -20,6 +20,7 @@ fn rocket(
     mixer_state: MixerState,
     note_repo: Arc<dyn db::models::NoteRepository>,
     task_queue: Arc<AsyncQueue>,
+    config: &Config,
 ) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
@@ -58,7 +59,12 @@ fn rocket(
         // new api
         .mount(
             "/api/v1/",
-            api::routes(),
+            api::routes(if config.swagger_enabled() { api::RouterMode::WithSwagger } else { api::RouterMode::Native }),
+        )
+        // swagger
+        .mount(
+            "/swagger-ui/api/v1/",
+            api::swagger()
         )
 }
 
@@ -114,7 +120,7 @@ async fn main() -> anyhow::Result<ExitCode> {
 
     // Main event loop for API launched by rocket
     let storage = db::DatabaseStorage::note_storage().await.expect("rocket storage initialized");
-    rocket(MixerState::new(sender.clone()), storage, task_queue.clone())
+    rocket(MixerState::new(sender.clone()), storage, task_queue, &config)
         .launch()
         .await?;
 

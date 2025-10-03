@@ -1,6 +1,7 @@
 [default]
 cli_colors = false
 debug = true
+swagger_enabled = true
 port = 8001
 
 [default.client]
@@ -14,6 +15,7 @@ event_loop_timeout_ms = 1000
 url = "notes.db"
 
 [default.tq]
+enabled = true
 db_url = "postgresql://login:password@domain.com:9000"
 workers_max = 1 
 

@@ -11,6 +11,8 @@ The service provides:
 * `POST /api/v1/mix/batch/delayed` is the same as above but expect batch of requests
 * `GET /api/v1/mix/delayed/status/<task_id>` endpoint that returns note execution status for given `task_id`
 
+The swagger-ui is accessible at `swagger-ui/api/v1` endpoint
+
 ## Configuration
 
 ___./Rocket.toml___ contains the configs for the service

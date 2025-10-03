@@ -8,6 +8,7 @@ const DEFAULT_PRIVATE_ACCOUNTS_DIR: &str = "./accounts_for_import";
 #[serde(crate = "rocket::serde")]
 pub struct Config {
     debug: Option<bool>,
+    swagger_enabled: bool,
     client: MidenClient,
     db: Database,
     tq: TaskQueue,
@@ -16,6 +17,10 @@ pub struct Config {
 impl Config {
     pub fn debug(&self) -> bool {
         self.debug.unwrap_or(false)
+    }
+
+    pub fn swagger_enabled(&self) -> bool {
+        self.swagger_enabled
     }
 
     pub fn client(&self) -> &MidenClient {
@@ -77,6 +82,7 @@ pub struct Database {
 #[derive(Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct TaskQueue {
+    pub enabled: bool,
     pub db_url: String,
     pub db_max_pool: Option<u32>,
     pub workers_max: Option<u32>,

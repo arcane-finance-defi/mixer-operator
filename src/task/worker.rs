@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, Ok};
 use diesel::{Connection as _, PgConnection};
 use fang::{AsyncQueue, asynk::async_worker_pool::AsyncWorkerPool, run_migrations_postgres};
 use tokio::sync::OnceCell;
@@ -22,14 +22,19 @@ pub async fn prepare_task_queue(
     config: &crate::config::TaskQueue,
     mixer_sender: MixerClientSender,
 ) -> anyhow::Result<AsyncQueue> {
-    do_migration(&config.db_url)?;
-
     let mut queue: AsyncQueue = AsyncQueue::builder()
         // Postgres database url
         .uri(config.db_url.clone())
         // Max number of connections that are allowed
         .max_pool_size(config.db_max_pool.unwrap_or(3))
         .build();
+    
+    if !config.enabled {
+        tracing::warn!("Task queue was disabled, you should not do it in release");
+        return Ok(queue)
+    }
+    
+    do_migration(&config.db_url)?;
 
     // Always connect first in order to perform any operation
     queue.connect().await?;
