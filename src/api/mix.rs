@@ -37,7 +37,8 @@ use crate::{
 
 type MixResult = Result<String, MixerClientError>;
 
-// #[openapi(tag = "MixResponse")]
+/// Add single note to mix storage with instant parameter
+/// With `instant = true` perform mix immediately
 #[openapi(tag = "MixRequest")] //, ignore = "state, note_repo")]
 #[instrument(skip(data, state, note_repo))]
 #[post("/mix", data = "<data>")]
@@ -67,7 +68,7 @@ pub async fn post_handler(
     }
 }
 
-#[openapi]
+#[openapi(tag = "BatchMixRequest")]
 #[instrument(skip(data, state, note_repo))]
 #[post("/mix/batch", data = "<data>")]
 pub async fn post_batch_handler(
@@ -120,7 +121,7 @@ pub async fn post_batch_handler(
     }
 }
 
-#[openapi]
+#[openapi(tag = "MixDelayedRequest")]
 #[post("/mix/delayed", data = "<data>")]
 #[instrument(skip(data, note_repo, task_queue))]
 pub async fn delayed_post_handler(
@@ -139,7 +140,7 @@ pub async fn delayed_post_handler(
     Ok(Json(MixDelayedResponse { request_id }))
 }
 
-#[openapi]
+#[openapi(tag = "MixDelayedRequest")]
 #[post("/mix/batch/delayed", data = "<data>")]
 #[instrument(skip(data, note_repo, task_queue))]
 pub async fn delayed_post_batch_handler(

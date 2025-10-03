@@ -12,8 +12,8 @@ use rocket_okapi::okapi::schemars::JsonSchema;
 use super::error::EndpointError;
 use crate::db::models::{NoteRepository, NoteRepositoryError, notes};
 
-/// Add note to mix storage
-#[openapi]
+/// Add single note to mix storage to execute with delay specified
+#[openapi(tag = "MixDraftRequest")]
 #[post("/note-drafts/new", data = "<note_data>")]
 #[tracing::instrument(skip(note_repo))]
 pub async fn post_new_handler(
@@ -33,8 +33,8 @@ pub async fn post_new_handler(
     Ok(Json(note_id))
 }
 
-/// Retrieve note status bitflags
-#[openapi]
+/// Retrieve note status bitflags (integer with some bits set) by `note_id`
+#[openapi(tag = "MixDraftRequest")]
 #[get("/note-drafts/status/<note_id>")]
 #[tracing::instrument(skip(note_repo))]
 pub async fn get_status_handler(
