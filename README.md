@@ -6,8 +6,12 @@ The mixer operator is a Rust-based off-chain service that generates consume-note
 The service provides:
 
 * `POST /api/v1/mix` endpoint that generates tx from the note and account and returns `tx_id`
+* `POST /api/v1/mix/batch` is the same as above but expect batch of requests
 * `POST /api/v1/mix/delayed` endpoint that put note execution request into the queue to be excuted later with given delay in milliseconds and return `task_id`
-* `POST /api/v1/mix/delayed/status/<task_id>` endpoint that returns note execution status for given `task_id`
+* `POST /api/v1/mix/batch/delayed` is the same as above but expect batch of requests
+* `GET /api/v1/mix/delayed/status/<task_id>` endpoint that returns note execution status for given `task_id`
+
+The swagger-ui is accessible at `swagger-ui/api/v1` endpoint
 
 ## Configuration
 

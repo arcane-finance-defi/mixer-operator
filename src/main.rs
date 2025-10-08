@@ -2,11 +2,10 @@ use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Context as _;
 use fang::AsyncQueue;
-use futures::{StreamExt as _, stream::FuturesUnordered};
 use mixer_operator::{
     PACKAGE, VERSION, api,
     config::Config,
-    db, executor, logging,
+    db, logging,
     mixer::{MixClientRequest, event_loop},
     state::MixerState,
     task::worker::prepare_task_queue,
@@ -21,6 +20,7 @@ fn rocket(
     mixer_state: MixerState,
     note_repo: Arc<dyn db::models::NoteRepository>,
     task_queue: Arc<AsyncQueue>,
+    config: &Config,
 ) -> Rocket<Build> {
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
@@ -59,16 +59,12 @@ fn rocket(
         // new api
         .mount(
             "/api/v1/",
-            rocket::routes![
-                api::mix::post_handler,
-                api::mix::delayed_post_handler,
-                api::mix::delayed_status_get_handler,
-                api::note_drafts::post_new_handler,
-                api::note_drafts::get_status_handler,
-                // api::note_drafts::get_by_id_handler,
-                // api::note_drafts::post_activate_by_id_handler,
-                // api::note_drafts::delete_by_id_handler,
-            ],
+            api::routes(if config.swagger_enabled() { api::RouterMode::WithSwagger } else { api::RouterMode::Native }),
+        )
+        // swagger
+        .mount(
+            "/swagger-ui/api/v1/",
+            api::swagger()
         )
 }
 
@@ -122,17 +118,9 @@ async fn main() -> anyhow::Result<ExitCode> {
         .with_context(|| "prepare task queue")?;
     let task_queue = Arc::new(task_queue);
 
-    // Prepare sidecar futures
-    let mut handles = FuturesUnordered::new();
-
-    // Note executor task
-    let storage = db::DatabaseStorage::note_storage().await.expect("executor storage initialized");
-    let stop_token = cancellation_token.clone();
-    handles.push(executor::spawn(sender.clone(), storage, stop_token));
-
     // Main event loop for API launched by rocket
     let storage = db::DatabaseStorage::note_storage().await.expect("rocket storage initialized");
-    rocket(MixerState::new(sender.clone()), storage, task_queue.clone())
+    rocket(MixerState::new(sender.clone()), storage, task_queue, &config)
         .launch()
         .await?;
 
@@ -141,17 +129,9 @@ async fn main() -> anyhow::Result<ExitCode> {
     tracing::info!("Shutting down {PACKAGE}");
     cancellation_token.cancel();
 
-    let mut exit_code = ExitCode::SUCCESS;
-    while let Some((name, result)) = handles.next().await {
-        if let Err(error) = result.with_context(|| format!("running {name}")) {
-            exit_code = ExitCode::FAILURE;
-            tracing::error!("Fatal error: {error:#}. Stopping");
-        }
-    }
-
     mixer_worker.join().expect("mixer thread finished");
 
-    Ok(exit_code)
+    Ok(ExitCode::SUCCESS)
 }
 
 fn setup_panic_hook() {

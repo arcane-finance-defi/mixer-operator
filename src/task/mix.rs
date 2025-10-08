@@ -13,13 +13,7 @@ use miden_objects::{
 use tokio::sync::oneshot;
 
 use crate::{
-    db::{
-        DatabaseStorage,
-        models::{
-            NoteRepository,
-            notes::{FullNote, NoteStatus},
-        },
-    },
+    db::{DatabaseStorage, models::notes::FullNote},
     mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
     task::worker::mixer_client_sender,
 };
@@ -68,14 +62,14 @@ impl AsyncRunnable for AsyncMixTask {
 
         tracing::trace!("Obtaining mixer client sender");
         let client = mixer_client_sender().map_err(AsyncMixTaskError)?;
-
+        // TODO: should lock note to avoid inclusion to batch transaction by mix_batch
         let (note_id, tx_id) = mix(client.clone(), note, faucet_id)
             .await
             .with_context(|| "async mix task worker is mixing note {}")
             .map_err(AsyncMixTaskError)?;
         tracing::info!("Completed mix for note_id={note_id} tx_id={tx_id}");
 
-        match set_note_txed(&*db, note_id).await {
+        match super::storage::set_note_txed(&*db, note_id).await {
             Ok(_) => {
                 tracing::info!(
                     "Successfully save state for txed note note_id={note_id} tx_id={tx_id}"
@@ -147,12 +141,4 @@ pub async fn mix(
     let tx_id = response.await?.with_context(|| format!("internal mixer error for {note_id}"))?;
 
     Ok((note_id, tx_id))
-}
-
-#[tracing::instrument(skip(storage))]
-pub async fn set_note_txed(storage: &dyn NoteRepository, note_id: NoteId) -> anyhow::Result<()> {
-    match storage.update_note_status_by_id(&note_id.to_string(), NoteStatus::TXED).await {
-        Ok(_) => Ok(()),
-        Err(err) => anyhow::bail!("update notes status error {err:#?}"),
-    }
 }

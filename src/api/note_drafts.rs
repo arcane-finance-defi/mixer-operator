@@ -6,11 +6,16 @@ use rocket::{
     response::Responder,
     serde::{Deserialize, Serialize, json::Json},
 };
+use rocket_okapi::{
+    okapi::{schemars, schemars::JsonSchema},
+    openapi,
+};
 
 use super::error::EndpointError;
 use crate::db::models::{NoteRepository, NoteRepositoryError, notes};
 
-/// Add note to mix storage
+/// Add single note to mix storage to execute with delay specified
+#[openapi(tag = "MixDraftRequest")]
 #[post("/note-drafts/new", data = "<note_data>")]
 #[tracing::instrument(skip(note_repo))]
 pub async fn post_new_handler(
@@ -30,7 +35,8 @@ pub async fn post_new_handler(
     Ok(Json(note_id))
 }
 
-/// Retrieve note status bitflags
+/// Retrieve note status bitflags (integer with some bits set) by `note_id`
+#[openapi(tag = "MixDraftRequest")]
 #[get("/note-drafts/status/<note_id>")]
 #[tracing::instrument(skip(note_repo))]
 pub async fn get_status_handler(
@@ -99,7 +105,7 @@ pub async fn get_status_handler(
 //     }
 // }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
 pub struct MixDraftRequest {
     dest_chain_id: u64,
@@ -110,7 +116,7 @@ pub struct MixDraftRequest {
     account_id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Responder)]
+#[derive(Debug, Deserialize, Serialize, Responder, rocket_okapi::OpenApiResponder)]
 #[serde(crate = "rocket::serde")]
 #[response(status = 500, content_type = "json")]
 pub struct ErrorResponse {

@@ -19,6 +19,17 @@ pub struct FullNote {
     pub request_id: Option<String>,
 }
 
+#[derive(Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
+#[diesel(table_name = schema::notes)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct NoteDetails {
+    pub note_id: String,
+    pub account_id: String,
+    pub scheduled_datetime: Option<NaiveDateTime>,
+    pub status: NoteStatus,
+    pub request_id: Option<String>,
+}
+
 #[derive(Insertable)]
 #[diesel(table_name = schema::notes)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -39,6 +50,7 @@ bitflags::bitflags! {
         const ONCHAIN = 0x04;
         const TXED = 0x08;
         const CONSUMED = 0x10;
+        const PROCESSING = 0x20;
     }
 }
 

@@ -1,8 +1,10 @@
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use notes::{FullNote, NoteStatus};
 use thiserror::Error;
 
 use super::{DatabaseStorage, schema};
+use crate::db::models::notes::NoteDetails;
 
 pub mod notes;
 
@@ -12,6 +14,8 @@ pub enum NoteRepositoryError {
     MoreThanOneRowAffected,
     #[error("Note not found")]
     NotFound(String),
+    #[error("Pool interact error")]
+    InteractDeadpool(String),
     #[error(transparent)]
     Internal(#[from] NoteRepositoryErrorGeneric),
 }
@@ -25,6 +29,42 @@ impl std::fmt::Display for NoteRepositoryErrorGeneric {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let inner = self.inner.to_string();
         write!(f, "internal note repository error {inner}")
+    }
+}
+
+impl From<diesel::result::Error> for NoteRepositoryError {
+    fn from(error: diesel::result::Error) -> Self {
+        match error {
+            // TODO:
+            // diesel::result::Error::InvalidCString(nul_error) => todo!(),
+            // diesel::result::Error::DatabaseError(database_error_kind, database_error_information)
+            // => todo!(),
+            diesel::result::Error::NotFound => NoteRepositoryError::NotFound(String::new()),
+            // diesel::result::Error::QueryBuilderError(error) => todo!(),
+            // diesel::result::Error::DeserializationError(error) => todo!(),
+            // diesel::result::Error::SerializationError(error) => todo!(),
+            // diesel::result::Error::RollbackErrorOnCommit { rollback_error, commit_error } =>
+            // todo!(), diesel::result::Error::RollbackTransaction => todo!(),
+            // diesel::result::Error::AlreadyInTransaction => todo!(),
+            // diesel::result::Error::NotInTransaction => todo!(),
+            // diesel::result::Error::BrokenTransactionManager => todo!(),
+            err => NoteRepositoryError::Internal(NoteRepositoryErrorGeneric::new(err)),
+        }
+    }
+}
+
+impl From<deadpool_diesel::InteractError> for NoteRepositoryError {
+    fn from(error: deadpool_diesel::InteractError) -> Self {
+        use deadpool_diesel::InteractError;
+        match error {
+            InteractError::Panic(erased_type) => NoteRepositoryError::InteractDeadpool(format!(
+                "pool: {}",
+                InteractError::Panic(erased_type)
+            )),
+            InteractError::Aborted => {
+                NoteRepositoryError::InteractDeadpool(format!("pool: {}", InteractError::Aborted))
+            },
+        }
     }
 }
 
@@ -61,15 +101,34 @@ pub trait NoteRepository: Send + Sync {
     async fn get_note_status_by_id(&self, note_id: &str)
     -> Result<NoteStatus, NoteRepositoryError>;
 
+    #[allow(clippy::ptr_arg)] // TODO: fix this warning
+    async fn get_note_status_by_ids(
+        &self,
+        note_ids: &Vec<String>,
+    ) -> Result<Vec<NoteStatus>, NoteRepositoryError>;
+
     async fn update_note_status_by_id(
         &self,
         note_id: &str,
         new_status: NoteStatus,
     ) -> Result<(), NoteRepositoryError>;
 
+    async fn update_note_status_by_ids(
+        &self,
+        note_id_statuses: Vec<(String, NoteStatus)>,
+    ) -> Result<(), NoteRepositoryError>;
+
+    /// Retrieves `FullNote`s from repository by status bitmask
     async fn get_notes_by_status(
         &self,
         req_status: NoteStatus,
+    ) -> Result<Vec<FullNote>, NoteRepositoryError>;
+
+    /// Retrieves `FullNote`s from repository by status bitmask and scheduled date <= `date`
+    async fn get_notes_by_status_and_date(
+        &self,
+        req_status: NoteStatus,
+        date: DateTime<Utc>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError>;
 }
 
@@ -83,8 +142,8 @@ impl NoteRepository for DatabaseStorage {
                 diesel::insert_into(schema::notes::table).values(&note).execute(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
@@ -105,8 +164,8 @@ impl NoteRepository for DatabaseStorage {
                     .optional()
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?)
     }
@@ -124,8 +183,8 @@ impl NoteRepository for DatabaseStorage {
                     .optional()
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result.ok_or_else(|| NoteRepositoryError::NotFound(req_id.to_string()))?)
     }
@@ -146,11 +205,84 @@ impl NoteRepository for DatabaseStorage {
                     .optional()
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
 
         let result = result.ok_or_else(|| NoteRepositoryError::NotFound(note_id.to_string()))?;
         Ok(result.status)
+    }
+
+    /// Get notes statuses in one transaction
+    /// Resulting statuses vector is guaranteed to be in the same order as input `note_ids`
+    async fn get_note_status_by_ids(
+        &self,
+        note_ids: &Vec<String>,
+    ) -> Result<Vec<NoteStatus>, NoteRepositoryError> {
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+
+        let note_ids = note_ids.clone();
+        let result = conn
+            .interact(|conn| {
+                conn.transaction(|conn| {
+
+                let mut statuses: Vec<NoteStatus> = Vec::with_capacity(note_ids.len());
+
+                for note_id in note_ids {
+                    // simply return NotFound error if not exists in the table
+                    let note = schema::notes::table
+                        .select(NoteDetails::as_select())
+                        .filter(schema::notes::note_id.eq(note_id))
+                        .first::<NoteDetails>(conn)?;
+                    statuses.push(note.status);
+                }
+
+                // That uses `diesel::result::Error` as error type
+                // you can use any other error type here as long as
+                // it implements `From<diesel::result::Error>`.
+                diesel::result::QueryResult::Ok(statuses)
+            })
+        })
+        .await
+        // this maps the deadpool interact errors
+        .map_err(NoteRepositoryError::from)?
+        // and this maps the diesel error
+        .map_err(NoteRepositoryError::from)?;
+
+        Ok(result)
+    }
+
+    async fn update_note_status_by_ids(
+        &self,
+        note_id_statuses: Vec<(String, NoteStatus)>,
+    ) -> Result<(), NoteRepositoryError> {
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+
+        use diesel::result::{Error, QueryResult};
+
+        use crate::db::schema::notes::dsl::{
+            note_id as db_note_id, notes as db_notes, status as db_status,
+        };
+        let result = conn
+            .interact(|conn| {
+                conn.transaction(|conn| {
+                    for (new_note_id, new_status) in note_id_statuses {
+                        let rows_affected =
+                            diesel::update(db_notes.filter(db_note_id.eq(new_note_id)))
+                                .set(db_status.eq(new_status))
+                                .execute(conn)?;
+                        if rows_affected != 1 {
+                            // TODO: should return actual error, not generic RollbackTransaction
+                            return QueryResult::Err(Error::RollbackTransaction);
+                        }
+                    }
+                    QueryResult::Ok(())
+                })
+            })
+            .await
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
+
+        Ok(result)
     }
 
     async fn update_note_status_by_id(
@@ -170,8 +302,8 @@ impl NoteRepository for DatabaseStorage {
                     .execute(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
@@ -201,8 +333,40 @@ impl NoteRepository for DatabaseStorage {
                     .load::<FullNote>(conn)
             })
             .await
-            .map_err(NoteRepositoryErrorGeneric::new)?
-            .map_err(NoteRepositoryErrorGeneric::new)?;
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
+
+        Ok(result)
+    }
+
+    async fn get_notes_by_status_and_date(
+        &self,
+        req_status: NoteStatus,
+        date: DateTime<Utc>,
+    ) -> Result<Vec<FullNote>, NoteRepositoryError> {
+        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+
+        use diesel::{
+            dsl::sql,
+            sql_types::{Bool, Integer},
+        };
+
+        use crate::db::schema::notes::dsl as schema_dsl;
+        let result = conn
+            .interact(move |conn| {
+                schema::notes::table
+                    .filter(
+                        sql::<Bool>("status & ")
+                            .bind::<Integer, _>(req_status)
+                            .sql(" = ")
+                            .bind::<Integer, _>(req_status),
+                    )
+                    .filter(schema_dsl::scheduled_datetime.le(date.naive_utc()))
+                    .load::<FullNote>(conn)
+            })
+            .await
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
 
         Ok(result)
     }
