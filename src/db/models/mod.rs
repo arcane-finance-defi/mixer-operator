@@ -1,3 +1,4 @@
+use anyhow::{Context as _, anyhow};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use notes::{FullNote, NoteStatus};
@@ -17,12 +18,12 @@ pub enum NoteRepositoryError {
     #[error("Pool interact error")]
     InteractDeadpool(String),
     #[error(transparent)]
-    Internal(#[from] NoteRepositoryErrorGeneric),
+    Internal(#[from] anyhow::Error),
 }
 
 #[derive(Debug)]
 pub struct NoteRepositoryErrorGeneric {
-    inner: Box<dyn std::error::Error>,
+    inner: Box<dyn std::error::Error + Sync + Send>,
 }
 
 impl std::fmt::Display for NoteRepositoryErrorGeneric {
@@ -48,7 +49,7 @@ impl From<diesel::result::Error> for NoteRepositoryError {
             // diesel::result::Error::AlreadyInTransaction => todo!(),
             // diesel::result::Error::NotInTransaction => todo!(),
             // diesel::result::Error::BrokenTransactionManager => todo!(),
-            err => NoteRepositoryError::Internal(NoteRepositoryErrorGeneric::new(err)),
+            err => NoteRepositoryError::Internal(err.into()),
         }
     }
 }
@@ -58,7 +59,7 @@ impl From<deadpool_diesel::InteractError> for NoteRepositoryError {
         use deadpool_diesel::InteractError;
         match error {
             InteractError::Panic(erased_type) => NoteRepositoryError::InteractDeadpool(format!(
-                "pool: {}",
+                "interact pool: {}",
                 InteractError::Panic(erased_type)
             )),
             InteractError::Aborted => {
@@ -68,27 +69,22 @@ impl From<deadpool_diesel::InteractError> for NoteRepositoryError {
     }
 }
 
-impl std::error::Error for NoteRepositoryErrorGeneric {}
-
-// This enables using `?` on functions that return `Result<_, Error>` to turn them into
-// `Result<_, NoteRepositoryError>`. That way you don't need to do that manually.
-// impl<E> From<E> for NoteRepositoryError
-// where
-//     E: Into<Box<dyn std::error::Error>>,
-// {
-//     #[track_caller]
-//     fn from(err: E) -> Self {
-//         Self { inner: err.into() }
-//     }
-// }
-impl NoteRepositoryErrorGeneric {
-    pub fn new<E>(err: E) -> Self
-    where
-        E: Into<Box<dyn std::error::Error>>,
-    {
-        NoteRepositoryErrorGeneric { inner: err.into() }
+impl From<deadpool_diesel::PoolError> for NoteRepositoryError {
+    fn from(error: deadpool_diesel::PoolError) -> Self {
+        NoteRepositoryError::Internal(anyhow!("pool error {error}"))
     }
 }
+
+// impl std::error::Error for NoteRepositoryErrorGeneric {}
+
+// impl NoteRepositoryErrorGeneric {
+//     pub fn new<E>(err: E) -> Self
+//     where
+//         E: Into<Box<dyn std::error::Error>>,
+//     {
+//         NoteRepositoryErrorGeneric { inner: err.into() }
+//     }
+// }
 
 #[async_trait::async_trait]
 pub trait NoteRepository: Send + Sync {
@@ -130,12 +126,32 @@ pub trait NoteRepository: Send + Sync {
         req_status: NoteStatus,
         date: DateTime<Utc>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError>;
+
+    // /// Actually *cheatty* generic method for executing arbitary code with notes array retrieved
+    // by id /// The only constraint is that applyed functor should return new note statuses or
+    // error TODO:
+    // how it can be done:
+    // lock -> get notes -> do arbitary staff -> write new statuses -> unlock
+    // but we need a way to implement recursive transaction closures
+    // async fn transform_with_fn<F>(
+    //     &self,
+    //     note_ids: Vec<String>,
+    //     func: F,
+    // ) -> Result<Vec<NoteStatus>, NoteRepositoryError>
+    // where F: FnOnce();// -> String;
+
+    async fn mix_batch(
+        &self,
+        note_ids: Vec<String>,
+        account_id: String,
+        client: &crate::mixer::MixerClientSender,
+    ) -> Result<String, NoteRepositoryError>;
 }
 
 #[async_trait::async_trait]
 impl NoteRepository for DatabaseStorage {
     async fn add_note(&self, note: FullNote) -> Result<(), NoteRepositoryError> {
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         let result = conn
             .interact(move |conn| {
@@ -154,7 +170,7 @@ impl NoteRepository for DatabaseStorage {
     async fn get_note_by_id(&self, note_id: &str) -> Result<FullNote, NoteRepositoryError> {
         let find_note_id = note_id.to_string();
 
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         let result = conn
             .interact(|conn| {
@@ -173,7 +189,7 @@ impl NoteRepository for DatabaseStorage {
     async fn get_note_by_request_id(&self, req_id: &str) -> Result<FullNote, NoteRepositoryError> {
         let find_req_id = req_id.to_string();
 
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         let result = conn
             .interact(|conn| {
@@ -195,7 +211,7 @@ impl NoteRepository for DatabaseStorage {
     ) -> Result<NoteStatus, NoteRepositoryError> {
         let find_note_id = note_id.to_string();
 
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         let result = conn
             .interact(|conn| {
@@ -218,7 +234,7 @@ impl NoteRepository for DatabaseStorage {
         &self,
         note_ids: &Vec<String>,
     ) -> Result<Vec<NoteStatus>, NoteRepositoryError> {
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         let note_ids = note_ids.clone();
         let result = conn
@@ -255,7 +271,7 @@ impl NoteRepository for DatabaseStorage {
         &self,
         note_id_statuses: Vec<(String, NoteStatus)>,
     ) -> Result<(), NoteRepositoryError> {
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         use diesel::result::{Error, QueryResult};
 
@@ -292,7 +308,7 @@ impl NoteRepository for DatabaseStorage {
     ) -> Result<(), NoteRepositoryError> {
         let find_note_id = find_note_id.to_string();
 
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         use crate::db::schema::notes::dsl::*;
         let result = conn
@@ -315,7 +331,7 @@ impl NoteRepository for DatabaseStorage {
         &self,
         req_status: NoteStatus,
     ) -> Result<Vec<FullNote>, NoteRepositoryError> {
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         use diesel::{
             dsl::sql,
@@ -344,7 +360,7 @@ impl NoteRepository for DatabaseStorage {
         req_status: NoteStatus,
         date: DateTime<Utc>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError> {
-        let conn = self.pool.get().await.map_err(NoteRepositoryErrorGeneric::new)?;
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
         use diesel::{
             dsl::sql,
@@ -369,5 +385,124 @@ impl NoteRepository for DatabaseStorage {
             .map_err(NoteRepositoryError::from)?;
 
         Ok(result)
+    }
+
+    async fn mix_batch(
+        &self,
+        note_ids: Vec<String>,
+        account_id: String,
+        client: &crate::mixer::MixerClientSender,
+    ) -> Result<String, NoteRepositoryError> {
+        use miden_objects::{note::Note, transaction::TransactionId};
+
+        use crate::{
+            db::schema::notes::dsl::{
+                note_id as db_note_id, notes as db_notes, status as db_status,
+            },
+            mixer::{MixClientRequest, client::MixerClientError, utils::account_from_hex},
+        };
+
+        if note_ids.len() > crate::MAX_NOTES_IN_BATCH_TRANSACTION {
+            return Err(
+                anyhow!("too many notes for batch transaction ({l})", l = note_ids.len()).into()
+            );
+        }
+
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
+        let client = client.clone();
+
+        let result = conn
+            // The closure is executed in a separate thread so that the async runtime is not blocked
+            .interact(move |conn| {
+                // BEGIN TRANSACTION
+                conn.transaction(|conn| {
+                    let mut full_notes: Vec<FullNote> = Vec::with_capacity(note_ids.len());
+
+                    // collect notes from table
+                    for note_id in note_ids.iter() {
+                        // simply returns NotFound error if not exists in the table
+                        // thanks to implemented From<diesel::result::Error> for NoteRepositoryError
+                        let note = schema::notes::table
+                            // .select(NoteDetails::as_select())
+                            .filter(db_note_id.eq(note_id))
+                            .first::<FullNote>(conn)?;
+
+                        if note.account_id != account_id {
+                            tracing::error!("account_id for {note_id} mismatched {account_id}!={}", note.account_id);
+                            return Err(anyhow!("account {account_id} for {note_id} mismatched").into());
+                        }
+
+                        if note.status & NoteStatus::TXED == NoteStatus::TXED {
+                            return Err(anyhow!("account {account_id} for {note_id} status already txed").into());
+                        }
+
+                        full_notes.push(note);
+                    }
+
+                    tracing::info!("Reading account {account_id}");
+                    let faucet_id = account_from_hex(&account_id)?;
+
+                    // deserialize notes from strings
+                    tracing::info!("Reading notes for {account_id}");
+                    let miden_notes: Vec<Note> = full_notes
+                        .iter()
+                        .map(Note::try_from)
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    // send batch request
+                    let (request, response) = tokio::sync::oneshot::channel::<Result<TransactionId, MixerClientError>>();
+                    client
+                        .blocking_send(MixClientRequest::MixBatch {
+                            notes: miden_notes,
+                            account_id: faucet_id,
+                            response_sink: request,
+                        })
+                        .map_err(|e| NoteRepositoryError::Internal(anyhow!("client send error {e}")))?;
+
+                    // await for result of mixing (transaction id)
+                    let tx_id = response.blocking_recv()
+                        .with_context(|| format!("response mix batch error for {account_id}"))?
+                        .with_context(|| format!("internal mix batch error for {account_id}"))?;
+
+                    // update notes' statuses in the table
+                    for note_id in note_ids.iter() {
+                        let status = schema::notes::table
+                            .select(NoteDetails::as_select())
+                            .filter(db_note_id.eq(note_id))
+                            .first::<NoteDetails>(conn)?
+                            .status;
+
+                        let new_status = status | NoteStatus::TXED;
+
+                        if diesel::update(db_notes.filter(db_note_id.eq(note_id)))
+                            .set(db_status.eq(new_status))
+                            .execute(conn)? != 1 {
+                                return Err(NoteRepositoryError::MoreThanOneRowAffected);
+                            }
+                    }
+
+                    Ok(tx_id.to_string()) // TODO: how does this error coercion works? 0_o
+                })
+                // END TRANSACTION
+            })
+            .await??;
+
+        Ok(result)
+    }
+}
+
+impl TryFrom<&FullNote> for miden_objects::note::Note {
+    type Error = anyhow::Error;
+
+    fn try_from(full_note: &FullNote) -> Result<Self, Self::Error> {
+        use miden_objects::{note::Note, utils::Deserializable};
+
+        let FullNote { note_id, note, .. } = full_note;
+
+        let note_bytes = hex::decode(note)
+            .with_context(|| format!("decoding from hex string note {note_id}"))?;
+        let note = Note::read_from_bytes(note_bytes.as_slice())
+            .with_context(|| format!("reading note from bytes for {note_id}"))?;
+        Ok(note)
     }
 }

@@ -1,6 +1,7 @@
 use anyhow::Context;
 use miden_objects::{
     Word,
+    account::AccountId,
     note::{NoteFile, NoteId},
     utils::{Deserializable, Serializable, ToHex},
 };
@@ -34,4 +35,8 @@ pub fn word_from_hex(hexstr: &str) -> anyhow::Result<Word> {
     let word = Word::read_from_bytes(&bytes).context("reading word from bytes")?;
 
     Ok(word)
+}
+
+pub fn account_from_hex(hexstr: &str) -> anyhow::Result<AccountId> {
+    AccountId::from_hex(hexstr).map_err(|e| anyhow::anyhow!("account from hex err {e}"))
 }
