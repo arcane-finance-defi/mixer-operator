@@ -19,6 +19,7 @@ pub(super) async fn set_note_txed(
     }
 }
 
+#[allow(dead_code)]
 #[tracing::instrument(skip(storage, note_ids))]
 pub(super) async fn set_notes_txed(
     storage: &dyn NoteRepository,
@@ -47,6 +48,7 @@ pub(super) async fn poll_for_ready_notes(
     Ok(notes)
 }
 
+#[allow(dead_code)]
 pub(super) async fn set_note_processing(
     storage: &dyn NoteRepository,
     note_ids: &[&str],

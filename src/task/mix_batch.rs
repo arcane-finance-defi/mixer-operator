@@ -7,10 +7,6 @@ use fang::{
     asynk::async_queue::AsyncQueueable,
     serde::{Deserialize, Serialize},
 };
-use miden_objects::{
-    account::AccountId, note::Note, transaction::TransactionId, utils::Deserializable,
-};
-use tokio::sync::oneshot;
 
 use crate::{
     MAX_NOTES_IN_BATCH_TRANSACTION,
@@ -18,7 +14,7 @@ use crate::{
         DatabaseStorage,
         models::{NoteRepository, notes::FullNote},
     },
-    mixer::{MixClientRequest, MixerClientSender, client::MixerClientError},
+    mixer::MixerClientSender,
     task::worker::mixer_client_sender,
 };
 
@@ -124,95 +120,28 @@ impl From<AsyncMixBatchTaskError> for FangError {
     }
 }
 
-// TODO: execute in separate SINGLE transaction to avoid any r/w status hassle and sideffects
 async fn mix_batch_inner(
     notes_batch: &[FullNote],
     account_id: &str,
     db: Arc<dyn NoteRepository>,
     client: &MixerClientSender,
 ) -> anyhow::Result<()> {
-    // 1. Set status to PROCESSING
-    let note_ids: Vec<_> = notes_batch.iter().map(|note| note.note_id.as_str()).collect();
-    super::storage::set_note_processing(&(*db), &note_ids, true)
+    // TODO: try to adopt use of &str in `mix_batch` trait method
+    let note_ids: Vec<_> = notes_batch.iter().map(|note| note.note_id.to_string()).collect();
+
+    let tx_id = match db
+        .mix_batch(note_ids, account_id.to_string(), client)
         .await
-        .map_err(|e| anyhow::anyhow!("set_note_processing {}", e))?;
-
-    // 2. Batch to single transaction to first note acount_id clear PROCESSING status if there are
-    //    any errors
-    tracing::debug!("Converting from FullNote to Miden Note");
-    let notes_batch = notes_batch
-        .iter()
-        .map(|fullnote| {
-            let FullNote { note_id, note, .. } = fullnote;
-            let note_bytes = hex::decode(note)
-                .with_context(|| format!("decoding from hex string note {note_id}"))?;
-            let note = Note::read_from_bytes(note_bytes.as_slice())
-                .with_context(|| format!("reading note from bytes for {note_id}"))?;
-            Ok(note)
-        })
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
-
-    tracing::debug!("Converting from String to Miden AccountId");
-    let faucet_id = AccountId::from_hex(account_id).map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    // 3. Execute transaction
-    let tx_id = match mix_batch_with_client(notes_batch, faucet_id, client.clone())
-        .await
-        .with_context(|| "async mix task worker is mixing note {}")
+        .with_context(|| "async mix_batch worker is executing batch")
     {
         Ok(tx_id) => tx_id,
         Err(error) => {
-            tracing::error!("Error when trying to batch mix to {account_id}: {error:#?}");
-
-            tracing::debug!("Reset notes status");
-            // ! if it fails, notes will be locked up by their status
-            super::storage::set_note_processing(&(*db), &note_ids, true)
-                .await
-                .map_err(|e| anyhow::anyhow!("reset_note_processing {}", e))?;
-
-            anyhow::bail!("mix_batch internal client error: {error:#?}");
+            tracing::error!("Error when trying to mix batch to {account_id} with {error:#?}");
+            anyhow::bail!("mix_batch {error}");
         },
     };
     tracing::info!("Completed mix for account_id={account_id} with tx_id={tx_id}");
-
-    // 4. Clear note statuses to TXED
-    match super::storage::set_notes_txed(&*db, &note_ids).await {
-        Ok(_) => {
-            tracing::info!("Successfully save state for txed notes tx_id={tx_id}");
-            // TODO: should we save somewhere processed tx_id for tracing?
-            Ok(())
-        },
-        Err(err) => {
-            tracing::error!("Failed to save txed notes tx_id={tx_id} because {err:#?}");
-            Err(err)
-        },
-    }
-}
-
-#[tracing::instrument(skip(client, notes, account_id))]
-async fn mix_batch_with_client(
-    notes: Vec<Note>,
-    account_id: AccountId,
-    client: MixerClientSender,
-) -> anyhow::Result<String> {
-    tracing::info!("Executor trying to mix batch for {account_id}");
-
-    let (request, response) = oneshot::channel::<Result<TransactionId, MixerClientError>>();
-
-    client
-        .send(MixClientRequest::MixBatch {
-            notes,
-            account_id,
-            response_sink: request,
-        })
-        .await?;
-
-    // await for result of mixing
-    let tx_id = response
-        .await?
-        .with_context(|| format!("internal mix batch error for {account_id}"))?;
-
-    Ok(tx_id.to_string())
+    Ok(())
 }
 
 #[cfg(test)]
