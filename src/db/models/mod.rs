@@ -75,17 +75,6 @@ impl From<deadpool_diesel::PoolError> for NoteRepositoryError {
     }
 }
 
-// impl std::error::Error for NoteRepositoryErrorGeneric {}
-
-// impl NoteRepositoryErrorGeneric {
-//     pub fn new<E>(err: E) -> Self
-//     where
-//         E: Into<Box<dyn std::error::Error>>,
-//     {
-//         NoteRepositoryErrorGeneric { inner: err.into() }
-//     }
-// }
-
 #[async_trait::async_trait]
 pub trait NoteRepository: Send + Sync {
     async fn add_note(&self, note: notes::FullNote) -> Result<(), NoteRepositoryError>;

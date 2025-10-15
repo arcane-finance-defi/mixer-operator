@@ -64,7 +64,7 @@ pub async fn post_handler(
         Ok(Json(MixResponse::Instant { tx_id: vec![tx_id] }))
     } else {
         let note = Note::try_from(&data)?;
-        let full_note = fill_note_record(note, data.account_id, None, None)?;
+        let full_note = fill_note_record(note, data.account_id, Some(Utc::now()), None)?;
         add_to_note_repo(vec![full_note], note_repo).await?;
         Ok(Json(MixResponse::Empty))
     }
@@ -420,8 +420,7 @@ fn fill_note_record(
         note_id: serialized_note_id,
         note: serialized_note,
         account_id,
-        // ! for now just leave status blank to prevent from execution by legacy executors
-        status: models::NoteStatus::UNDEFINED, // TODO: del
+        status: models::NoteStatus::ACCEPTED,
         scheduled_datetime: scheduled_date.map(|d| d.naive_utc()),
         request_id: request_id.map(|r| r.to_owned()),
     })
