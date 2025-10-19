@@ -52,9 +52,7 @@ fn rocket(
         // legacy api
         .mount(
             "/",
-            rocket::routes![
-                api::mix::post_handler,
-            ],
+            api::healthcheck(if config.swagger_enabled() { api::RouterMode::WithSwagger } else { api::RouterMode::Native }),
         )
         // new api
         .mount(

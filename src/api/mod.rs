@@ -1,4 +1,5 @@
 mod error;
+pub mod healthcheck;
 pub mod mix;
 pub mod note_drafts;
 
@@ -35,6 +36,10 @@ pub fn routes(mode: RouterMode) -> Vec<rocket::Route> {
     // api::note_drafts::get_by_id_handler,
     // api::note_drafts::post_activate_by_id_handler,
     // api::note_drafts::delete_by_id_handler,
+}
+
+pub fn healthcheck(mode: RouterMode) -> Vec<rocket::Route> {
+    make_routes!(mode, [healthcheck::healthcheck_get_handler,])
 }
 
 pub fn swagger() -> Vec<rocket::Route> {
