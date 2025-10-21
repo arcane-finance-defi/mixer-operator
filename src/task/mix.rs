@@ -46,7 +46,7 @@ impl AsyncRunnable for AsyncMixTask {
         let note_record = db
             .get_note_by_request_id(&self.task_id)
             .await
-            .map_err(|e| AsyncMixTaskError(anyhow::anyhow!("note repo {}", e.to_string())))?;
+            .map_err(|e| AsyncMixTaskError(anyhow::anyhow!("note repo {e:?}")))?;
 
         tracing::trace!("Unpacking note record");
         let FullNote { note_id, note, account_id, .. } = note_record;
