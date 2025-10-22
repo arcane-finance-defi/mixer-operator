@@ -89,7 +89,7 @@ pub async fn post_batch_handler(
                 dest_address: req.dest_address,
                 serial_num_hex: req.serial_num_hex,
                 bridge_serial_num_hex: req.bridge_serial_num_hex,
-                amount: req.dest_chain_id,
+                amount: req.amount,
                 account_id: req.account_id,
                 instant: data.instant,
             });
@@ -221,7 +221,7 @@ async fn mix_instantly(
 
     for req in reqs {
         let note = Note::try_from(&req)?;
-        info!("Mixing note: {:?}", &note.id());
+        info!("Mixing note: {:?}", &note.id().to_string());
 
         let account_id = AccountId::from_hex(&req.account_id).map_err(EndpointError::from)?;
 

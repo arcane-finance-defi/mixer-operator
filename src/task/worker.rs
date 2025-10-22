@@ -30,7 +30,7 @@ pub async fn prepare_task_queue(
         .build();
 
     if !config.enabled {
-        tracing::warn!("Task queue was disabled, you should not do it in release");
+        tracing::warn!("Task queue was disabled, you should NOT do it IN PRODUCTION environment!");
         return Ok(queue);
     }
 
