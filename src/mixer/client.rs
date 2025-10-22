@@ -111,13 +111,11 @@ impl MixerClient {
         supported_accounts_dir: PathBuf,
         public_accounts_to_import: Vec<String>,
     ) -> Result<(), MixerClientError> {
+        info!("Mixer operator initialization start");
         let mut supported_accounts_dir = supported_accounts_dir.to_str().unwrap().to_string();
         supported_accounts_dir.push_str("/*.mac");
 
-        info!("Mixer operator initialization start");
-
         self.client.sync_state().await?;
-
         info!("Mixer state synced");
 
         for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
