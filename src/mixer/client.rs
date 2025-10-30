@@ -9,11 +9,7 @@ use miden_client::{
     transaction::{TransactionId, TransactionRequestBuilder, TransactionRequestError},
 };
 use miden_objects::{
-    AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word,
-    account::{AccountFile, AccountId},
-    crypto::rand::RpoRandomCoin,
-    note::{Note, NoteFile, NoteId},
-    utils::{Deserializable, DeserializationError},
+    account::{AccountFile, AccountId}, crypto::rand::RpoRandomCoin, note::{Note, NoteFile, NoteId}, transaction::ToInputNoteCommitments, utils::{Deserializable, DeserializationError}, AccountIdError, Felt, Word, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES
 };
 use rand::{Rng, rng, rngs::StdRng};
 use thiserror::Error;
@@ -145,6 +141,7 @@ impl MixerClient {
     }
 
     async fn cleanup(&self) -> Result<(), MixerClientError> {
+        info!("Clean-up");
         // self.store.remove_notes().await?;
 
         Ok(())
@@ -168,43 +165,37 @@ impl MixerClient {
         // sync state with blockchain
         self.client.sync_state().await?;
 
-        // obtain a cryptographic proof that note exists within the blockchain's state
-        let fetched_note = self.rpc.get_note_by_id(note.id()).await?;
-
-        let note_file =
-            NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
-
-        let note_id = self.client.import_note(note_file).await?;
-
         // obtain account to consume to
         let account = self.client.try_get_account(account_id).await;
 
-        // TODO: errors cast
+        // TODO: semantically wrong errors cast
         if let Err(MidenClientError::AccountDataNotFound(_)) = account {
             Err(MixerClientError::NotManageableAccountError(account_id.to_hex()))
         } else {
             Ok(())
         }?;
 
-        // TODO: client is needed only for submitting transaction,
         // sync state
         self.client.sync_state().await?;
 
+        info!("Build transaction request");
+        let tx_request = TransactionRequestBuilder::new()
+            .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
+            // TODO: is it ok?
+            .unauthenticated_input_notes(vec![(note, None)])
+            .build()?;
+
+        info!("Perform transaction");
         let tx = self
             .client
-            .new_transaction(
-                account_id,
-                TransactionRequestBuilder::new()
-                    .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
-                    .build_consume_notes(vec![note_id])?,
-            )
+            .new_transaction(account_id, tx_request)
             .await?;
-        info!("Built transaction");
 
         let tx_id = tx.executed_transaction().id();
+        // TODO: check somehow note commitment
 
         self.client.submit_transaction(tx).await?;
-        info!("Submit transaction");
+        info!("Submitted transaction");
 
         self.cleanup().await?;
 
