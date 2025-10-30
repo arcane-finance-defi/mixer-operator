@@ -333,74 +333,77 @@ pub struct MixDelayedResponse {
 impl TryFrom<&MixRequest> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixRequest) -> Result<Self, Self::Error> {
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
+        };
+        note_try_from(&value)
     }
 }
 
 impl TryFrom<&MixDelayedRequest> for Note {
     type Error = anyhow::Error;
-
     fn try_from(value: &MixDelayedRequest) -> Result<Self, Self::Error> {
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
+        };
+        note_try_from(&value)
     }
 }
 
 impl TryFrom<&MixMetadata> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixMetadata) -> Result<Self, Self::Error> {
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
+        };
+        note_try_from(&value)
     }
+}
+
+struct NoteFrom<'a> {
+    serial_num_hex: &'a str, 
+    bridge_serial_num_hex: &'a str,
+    dest_chain_id: u64, 
+    dest_address: &'a str, 
+    faucet_id: &'a str, 
+    amount: u64
+}
+
+fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
+    let faucet_id = AccountId::from_hex(&value.faucet_id)?;
+
+    let note = new_crosschain_note(
+        parse_hex_string_as_word(value.serial_num_hex)
+            .map_err(|e| anyhow!("Failed to parse serial number hex {e:?}"))?
+            .into(),
+        parse_hex_string_as_word(value.bridge_serial_num_hex)
+            .map_err(|e| anyhow!("Failed to parse bridge serial number hex {e:?}"))?
+            .into(),
+        Felt::new(value.dest_chain_id),
+        evm_address_to_felts(&value.dest_address)?,
+        None,
+        faucet_id,
+        value.amount,
+        faucet_id,
+        NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
+    )?;
+
+    Ok(note)
 }
 
 fn fill_note_record(
