@@ -1,9 +1,12 @@
 use anyhow::{Context, Ok};
 use diesel::{Connection as _, PgConnection};
-use fang::{AsyncQueue, asynk::async_worker_pool::AsyncWorkerPool, run_migrations_postgres};
+use fang::{
+    AsyncQueue, AsyncQueueable as _, asynk::async_worker_pool::AsyncWorkerPool,
+    run_migrations_postgres,
+};
 use tokio::sync::OnceCell;
 
-use crate::mixer::MixerClientSender;
+use crate::{mixer::MixerClientSender, task::AsyncMixBatchTask};
 
 static MIXER_SENDER: OnceCell<MixerClientSender> = OnceCell::const_new();
 
@@ -52,6 +55,11 @@ pub async fn prepare_task_queue(
     tracing::info!("Workers started");
 
     MIXER_SENDER.set(mixer_sender)?;
+    tracing::info!("Shared reference to Miden client set");
+
+    let task = AsyncMixBatchTask::default();
+    queue.insert_task(&task).await?;
+    tracing::info!("Periodic tasks enqueued");
 
     Ok(queue)
 }

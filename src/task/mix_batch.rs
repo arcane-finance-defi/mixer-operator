@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use fang::{
     AsyncRunnable, FangError, Scheduled, async_trait,
     asynk::async_queue::AsyncQueueable,
@@ -20,21 +20,9 @@ use crate::{
 
 struct AsyncMixBatchTaskError(anyhow::Error);
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(crate = "fang::serde")]
-pub struct AsyncMixBatchTask {
-    pub task_id: String,
-    pub scheduled_at: DateTime<Utc>,
-}
-
-impl AsyncMixBatchTask {
-    pub fn new(task_id: &str, scheduled_at: DateTime<Utc>) -> Self {
-        AsyncMixBatchTask {
-            task_id: task_id.to_string(),
-            scheduled_at,
-        }
-    }
-}
+pub struct AsyncMixBatchTask {}
 
 #[typetag::serde]
 #[async_trait]

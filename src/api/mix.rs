@@ -376,16 +376,16 @@ impl TryFrom<&MixMetadata> for Note {
 }
 
 struct NoteFrom<'a> {
-    serial_num_hex: &'a str, 
+    serial_num_hex: &'a str,
     bridge_serial_num_hex: &'a str,
-    dest_chain_id: u64, 
-    dest_address: &'a str, 
-    faucet_id: &'a str, 
-    amount: u64
+    dest_chain_id: u64,
+    dest_address: &'a str,
+    faucet_id: &'a str,
+    amount: u64,
 }
 
 fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
-    let faucet_id = AccountId::from_hex(&value.faucet_id)?;
+    let faucet_id = AccountId::from_hex(value.faucet_id)?;
 
     let note = new_crosschain_note(
         parse_hex_string_as_word(value.serial_num_hex)
@@ -395,7 +395,7 @@ fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
             .map_err(|e| anyhow!("Failed to parse bridge serial number hex {e:?}"))?
             .into(),
         Felt::new(value.dest_chain_id),
-        evm_address_to_felts(&value.dest_address)?,
+        evm_address_to_felts(value.dest_address)?,
         None,
         faucet_id,
         value.amount,
@@ -406,6 +406,8 @@ fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
     Ok(note)
 }
 
+/// Fill `FullNote` model with NoteStatus ACCEPTED and datetime so "batch mix" worker can catch it
+/// up Optionally `request_id` can be specified for "delayed mix" worker
 fn fill_note_record(
     note: Note,
     account_id: String,
