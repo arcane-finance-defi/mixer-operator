@@ -6,7 +6,7 @@ use diesel::{
 
 use crate::db::schema;
 
-#[derive(Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
+#[derive(Clone, Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
 #[diesel(table_name = schema::notes)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct FullNote {

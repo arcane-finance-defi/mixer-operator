@@ -497,19 +497,67 @@ impl TryFrom<&FullNote> for miden_objects::note::Note {
     }
 }
 
-// TODO: test repository trait methods with MockNotes (todo)
-// #[cfg(test)]
-// mod test {
-//     use crate::db::test::Fixture;
+// TODO: test repository trait methods with Notes
+#[cfg(test)]
+mod test {
+    use rand::Rng;
 
-//     #[tokio::test]
-//     async fn test_multi_status_fetch() {
-//         let fixture = Fixture::prepare().await;
-//         let db = fixture.db();
+    use crate::db::{
+        models::notes::{self, NoteStatus},
+        test::Fixture,
+    };
 
-//         let
+    fn mock_full_note(status: NoteStatus) -> notes::FullNote {
+        let rstr = || -> String {
+            let num = rand::rng().random::<u32>();
+            format!("{num:032X}")
+        };
+        let hexrstr = || format!("0x{}", rstr());
+        notes::FullNote {
+            note_id: rstr(),
+            note: hexrstr(),
+            account_id: hexrstr(),
+            scheduled_datetime: None,
+            status,
+            request_id: None,
+        }
+    }
 
-//         db.get_notes_by_status(req_status)
+    #[tokio::test]
+    async fn test_multi_status_fetch() {
+        let fixture = Fixture::prepare().await;
+        let db = fixture.db();
 
-//     }
-// }
+        let notes = db.get_notes_by_status_mask(None, None).await.expect("empty vec");
+        assert!(notes.is_empty());
+
+        let note = mock_full_note(NoteStatus::UNDEFINED);
+        db.add_note(note.clone()).await.expect("note was inserted");
+
+        let notes = db.get_notes_by_status_mask(None, None).await.expect("vec");
+        assert_eq!(notes.len(), 1);
+
+        db.update_note_status_by_id(&note.note_id, NoteStatus::ACCEPTED)
+            .await
+            .expect("note was updated");
+
+        let notes = db
+            .get_notes_by_status_mask(Some(NoteStatus::ACCEPTED), None)
+            .await
+            .expect("vec");
+        assert_eq!(notes.len(), 1);
+
+        db.update_note_status_by_id(&note.note_id, NoteStatus::ACCEPTED | NoteStatus::TXED)
+            .await
+            .expect("note was updated");
+
+        let notes = db
+            .get_notes_by_status_mask(
+                Some(NoteStatus::ACCEPTED),
+                Some(NoteStatus::TXED | NoteStatus::PROCESSING),
+            )
+            .await
+            .expect("vec");
+        assert_eq!(notes.len(), 0);
+    }
+}

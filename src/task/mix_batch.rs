@@ -44,6 +44,7 @@ impl AsyncRunnable for AsyncMixBatchTask {
             .map_err(|e| AsyncMixBatchTaskError(anyhow::anyhow!("poll_for_ready_notes {}", e)))?;
 
         if notes.is_empty() {
+            tracing::info!("No notes found for batch mix");
             return Ok(());
         }
 
