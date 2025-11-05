@@ -212,6 +212,7 @@ impl MixerClient {
 
     // TODO: result type should not neglect about individual note failures, so we can identify
     // errorneous notes and ignore them
+    #[tracing::instrument(skip_all)]
     pub async fn mix_batch(
         &mut self,
         notes: Vec<Note>,

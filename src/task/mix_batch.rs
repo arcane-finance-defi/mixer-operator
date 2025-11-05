@@ -27,6 +27,7 @@ pub struct AsyncMixBatchTask {}
 #[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for AsyncMixBatchTask {
+    #[tracing::instrument(skip_all)]
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
         tracing::info!("Do AsyncMixBatchTask");
 

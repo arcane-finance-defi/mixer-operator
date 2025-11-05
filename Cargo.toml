@@ -1,6 +1,6 @@
 [package]
 name = "mixer-operator"
-version = "0.11.1"
+version = "0.11.2"
 edition = "2024"
 rust-version = "1.89"
 default-run = "mixer-operator"
@@ -68,26 +68,10 @@ typetag = "0.2.20"
 # ] }
 
 # ! DEPRECATED 
-# sqlx = { version = "=0.8.1", features = ["sqlite"] }
-# rusqlite = "=0.37"
-
-# apalis-core = { features = ["tokio-comp"], version = "0.4" }
-# apalis-sql = { features = ["postgres", "migrate"], version = "0.4" }
-# sqlx = { features = ["runtime-tokio-native-tls"], version = "0.6"}
-
 # apalis = { version = "0.7.3", features = ["retry"] }
 # apalis-sql = { version = "0.7.3", features = ["postgres"] }
 # apalis-cron = { version = "0.7.3" }
 # sqlx = { version = "0.8.6", features = ["runtime-tokio-native-tls", "postgres"], default-features = false  }
-
-# [dependencies.libsqlite3-sys]
-# version = "0.34"
-# features = ["bundled"]
-
-# [patch.crates-io]
-# libsqlite3-sys = "0.34.0" # Force the use of the newer version
-
-# libsqlite3-sys = { version = "0.34" }
 
 [dev-dependencies]
 tempfile = "3.23.0"

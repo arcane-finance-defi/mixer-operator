@@ -104,30 +104,19 @@ pub trait NoteRepository: Send + Sync {
     ) -> Result<(), NoteRepositoryError>;
 
     /// Retrieves `FullNote`s from repository by status bitmask
-    async fn get_notes_by_status(
+    async fn get_notes_by_status_mask(
         &self,
-        req_status: NoteStatus,
+        set_mask: Option<NoteStatus>,
+        reset_mask: Option<NoteStatus>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError>;
 
     /// Retrieves `FullNote`s from repository by status bitmask and scheduled date <= `date`
-    async fn get_notes_by_status_and_date(
+    async fn get_notes_by_status_mask_and_date(
         &self,
-        req_status: NoteStatus,
+        set_mask: Option<NoteStatus>,
+        reset_mask: Option<NoteStatus>,
         date: DateTime<Utc>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError>;
-
-    // /// Actually *cheatty* generic method for executing arbitary code with notes array retrieved
-    // by id /// The only constraint is that applyed functor should return new note statuses or
-    // error TODO:
-    // how it can be done:
-    // lock -> get notes -> do arbitary staff -> write new statuses -> unlock
-    // but we need a way to implement recursive transaction closures
-    // async fn transform_with_fn<F>(
-    //     &self,
-    //     note_ids: Vec<String>,
-    //     func: F,
-    // ) -> Result<Vec<NoteStatus>, NoteRepositoryError>
-    // where F: FnOnce();// -> String;
 
     async fn mix_batch(
         &self,
@@ -316,9 +305,10 @@ impl NoteRepository for DatabaseStorage {
         Ok(())
     }
 
-    async fn get_notes_by_status(
+    async fn get_notes_by_status_mask(
         &self,
-        req_status: NoteStatus,
+        set_mask: Option<NoteStatus>,
+        reset_mask: Option<NoteStatus>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError> {
         let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
 
@@ -328,13 +318,18 @@ impl NoteRepository for DatabaseStorage {
         };
         let result = conn
             .interact(move |conn| {
+                // any value & 0 always equal 0
+                let set_mask = set_mask.unwrap_or(NoteStatus::from_bits_retain(0));
+                let reset_mask = reset_mask.unwrap_or(NoteStatus::from_bits_retain(0));
+
                 schema::notes::table
                     .filter(
                         sql::<Bool>("status & ")
-                            .bind::<Integer, _>(req_status)
+                            .bind::<Integer, _>(set_mask)
                             .sql(" = ")
-                            .bind::<Integer, _>(req_status),
+                            .bind::<Integer, _>(set_mask),
                     )
+                    .filter(sql::<Bool>("status & ").bind::<Integer, _>(reset_mask).sql(" = 0"))
                     .load::<FullNote>(conn)
             })
             .await
@@ -344,9 +339,10 @@ impl NoteRepository for DatabaseStorage {
         Ok(result)
     }
 
-    async fn get_notes_by_status_and_date(
+    async fn get_notes_by_status_mask_and_date(
         &self,
-        req_status: NoteStatus,
+        set_mask: Option<NoteStatus>,
+        reset_mask: Option<NoteStatus>,
         date: DateTime<Utc>,
     ) -> Result<Vec<FullNote>, NoteRepositoryError> {
         let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
@@ -359,13 +355,18 @@ impl NoteRepository for DatabaseStorage {
         use crate::db::schema::notes::dsl as schema_dsl;
         let result = conn
             .interact(move |conn| {
+                // any value & 0 always equal 0
+                let set_mask = set_mask.unwrap_or(NoteStatus::from_bits_retain(0));
+                let reset_mask = reset_mask.unwrap_or(NoteStatus::from_bits_retain(0));
+
                 schema::notes::table
                     .filter(
                         sql::<Bool>("status & ")
-                            .bind::<Integer, _>(req_status)
+                            .bind::<Integer, _>(set_mask)
                             .sql(" = ")
-                            .bind::<Integer, _>(req_status),
+                            .bind::<Integer, _>(set_mask),
                     )
+                    .filter(sql::<Bool>("status & ").bind::<Integer, _>(reset_mask).sql(" = 0"))
                     .filter(schema_dsl::scheduled_datetime.le(date.naive_utc()))
                     .load::<FullNote>(conn)
             })
@@ -495,3 +496,20 @@ impl TryFrom<&FullNote> for miden_objects::note::Note {
         Ok(note)
     }
 }
+
+// TODO: test repository trait methods with MockNotes (todo)
+// #[cfg(test)]
+// mod test {
+//     use crate::db::test::Fixture;
+
+//     #[tokio::test]
+//     async fn test_multi_status_fetch() {
+//         let fixture = Fixture::prepare().await;
+//         let db = fixture.db();
+
+//         let
+
+//         db.get_notes_by_status(req_status)
+
+//     }
+// }
