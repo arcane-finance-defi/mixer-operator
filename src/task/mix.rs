@@ -45,6 +45,7 @@ impl AsyncMixTask {
 #[async_trait]
 impl AsyncRunnable for AsyncMixTask {
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
+        tracing::info!("Do AsyncMixTask {:?} {:?}", self.task_id, self.scheduled_at);
         let db = DatabaseStorage::note_storage().await.map_err(AsyncMixTaskError)?;
 
         // task_id is effectively request_id in the storage
@@ -84,11 +85,11 @@ impl AsyncRunnable for AsyncMixTask {
             },
         }
     }
-    // this func is optional
+
     // Default task_type is common
-    fn task_type(&self) -> String {
-        "mix-task-type".to_string()
-    }
+    // fn task_type(&self) -> String {
+    //     "mix-task-type".to_string()
+    // }
 
     // If `uniq` is set to true and the task is already in the storage, it won't be inserted again
     // The existing record will be returned for for any insertions operaiton

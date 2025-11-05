@@ -28,8 +28,11 @@ pub struct AsyncMixBatchTask {}
 #[async_trait]
 impl AsyncRunnable for AsyncMixBatchTask {
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
+        tracing::info!("Do AsyncMixBatchTask");
+
         tracing::debug!("Obtaining database connection for AsyncMixBatchTask worker");
         let db = DatabaseStorage::note_storage().await.map_err(AsyncMixBatchTaskError)?;
+
         tracing::debug!("Obtaining mixer client sender");
         let client = mixer_client_sender().map_err(AsyncMixBatchTaskError)?;
 
@@ -71,21 +74,22 @@ impl AsyncRunnable for AsyncMixBatchTask {
         }
         Ok(())
     }
-    // this func is optional
-    // Default task_type is common
-    fn task_type(&self) -> String {
-        "mix-batch_task-type".to_string()
-    }
+
+    // Default task_type is `common`, if task_type does not match, task will not be fetched!
+    // fn task_type(&self) -> String {
+    //     "mix-batch_task-type".to_string()
+    // }
 
     // If `uniq` is set to true and the task is already in the storage, it won't be inserted again
-    // The existing record will be returned for for any insertions operaiton
+    // The existing record will be returned for any insertions operaiton
     fn uniq(&self) -> bool {
         true
     }
 
     // Every 10 seconds
     fn cron(&self) -> Option<Scheduled> {
-        let cron_schedule = "*/10 * * * * * *";
+        // NB! Intervals less than worker's sleep time (default 10s) won't work!
+        let cron_schedule = "0/10 * * * * *";
         Some(Scheduled::CronPattern(cron_schedule.to_string()))
     }
 
@@ -132,10 +136,10 @@ async fn mix_batch_inner(
     Ok(())
 }
 
-#[cfg(test)]
-mod test {
-    #[tokio::test]
-    async fn test_batch_grouping() {
-        // TODO: mock database records
-    }
-}
+// #[cfg(test)]
+// mod test {
+//     #[tokio::test]
+//     async fn test_batch_grouping() {
+//         // TODO: mock database records
+//     }
+// }

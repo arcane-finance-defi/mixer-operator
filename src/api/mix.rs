@@ -200,7 +200,7 @@ async fn mix_delayed(
         trace!("Note {note_id} added to storage as {request_id}");
 
         let task = AsyncMixTask::new(&request_id.to_string(), scheduled_at);
-        task_queue.insert_task(&task).await?;
+        task_queue.schedule_task(&task as &dyn fang::AsyncRunnable).await?;
         trace!("Task for note {note_id} enqueued");
 
         responses.push(request_id.to_string());
@@ -375,16 +375,16 @@ impl TryFrom<&MixMetadata> for Note {
     }
 }
 
-struct NoteFrom<'a> {
-    serial_num_hex: &'a str,
-    bridge_serial_num_hex: &'a str,
-    dest_chain_id: u64,
-    dest_address: &'a str,
-    faucet_id: &'a str,
-    amount: u64,
+pub(super) struct NoteFrom<'a> {
+    pub serial_num_hex: &'a str,
+    pub bridge_serial_num_hex: &'a str,
+    pub dest_chain_id: u64,
+    pub dest_address: &'a str,
+    pub faucet_id: &'a str,
+    pub amount: u64,
 }
 
-fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
+pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
     let faucet_id = AccountId::from_hex(value.faucet_id)?;
 
     let note = new_crosschain_note(
@@ -408,7 +408,7 @@ fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
 
 /// Fill `FullNote` model with NoteStatus ACCEPTED and datetime so "batch mix" worker can catch it
 /// up Optionally `request_id` can be specified for "delayed mix" worker
-fn fill_note_record(
+pub(super) fn fill_note_record(
     note: Note,
     account_id: String,
     scheduled_date: Option<DateTime<Utc>>,

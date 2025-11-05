@@ -150,6 +150,8 @@ impl MixerClient {
     }
 
     // #[tracing::instrument(skip_all)]
+    // TODO: should be deprecated in favour of mix_batch unified implementation
+    // TODO: or keep API compatibility and use mix_batch implementation underneath
     pub async fn mix(
         &mut self,
         note: Note,
