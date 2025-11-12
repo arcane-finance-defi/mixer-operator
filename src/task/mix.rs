@@ -8,7 +8,6 @@ use fang::{
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteId},
-    utils::Deserializable,
 };
 use tokio::sync::oneshot;
 
@@ -19,6 +18,12 @@ use crate::{
 };
 
 struct AsyncMixTaskError(anyhow::Error);
+
+impl From<AsyncMixTaskError> for FangError {
+    fn from(err: AsyncMixTaskError) -> Self {
+        FangError { description: format!("{:#?}", err.0) }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "fang::serde")]
@@ -40,6 +45,7 @@ impl AsyncMixTask {
 #[async_trait]
 impl AsyncRunnable for AsyncMixTask {
     async fn run(&self, _queueable: &dyn AsyncQueueable) -> Result<(), FangError> {
+        tracing::info!("Do AsyncMixTask {:?} {:?}", self.task_id, self.scheduled_at);
         let db = DatabaseStorage::note_storage().await.map_err(AsyncMixTaskError)?;
 
         // task_id is effectively request_id in the storage
@@ -48,20 +54,15 @@ impl AsyncRunnable for AsyncMixTask {
             .await
             .map_err(|e| AsyncMixTaskError(anyhow::anyhow!("note repo {e:?}")))?;
 
-        tracing::trace!("Unpacking note record");
-        let FullNote { note_id, note, account_id, .. } = note_record;
-
-        let note_bytes = hex::decode(note)
-            .with_context(|| format!("decoding from hex string note {note_id}"))
-            .map_err(AsyncMixTaskError)?;
-        let note = Note::read_from_bytes(note_bytes.as_slice())
-            .with_context(|| format!("reading note from bytes for {note_id}"))
-            .map_err(AsyncMixTaskError)?;
-        let faucet_id = AccountId::from_hex(&account_id)
-            .map_err(|e| AsyncMixTaskError(anyhow::anyhow!("{e}")))?;
+        tracing::trace!("Converting note record");
+        let note = Note::try_from(&note_record).map_err(AsyncMixTaskError)?;
+        let FullNote { account_id, .. } = note_record;
+        let faucet_id =
+            crate::mixer::utils::account_from_hex(&account_id).map_err(AsyncMixTaskError)?;
 
         tracing::trace!("Obtaining mixer client sender");
         let client = mixer_client_sender().map_err(AsyncMixTaskError)?;
+
         // TODO: should lock note to avoid inclusion to batch transaction by mix_batch
         let (note_id, tx_id) = mix(client.clone(), note, faucet_id)
             .await
@@ -84,11 +85,11 @@ impl AsyncRunnable for AsyncMixTask {
             },
         }
     }
-    // this func is optional
+
     // Default task_type is common
-    fn task_type(&self) -> String {
-        "mix-task-type".to_string()
-    }
+    // fn task_type(&self) -> String {
+    //     "mix-task-type".to_string()
+    // }
 
     // If `uniq` is set to true and the task is already in the storage, it won't be inserted again
     // The existing record will be returned for for any insertions operaiton
@@ -112,12 +113,6 @@ impl AsyncRunnable for AsyncMixTask {
     // backoff mode for retries in seconds?
     fn backoff(&self, attempt: u32) -> u32 {
         u32::pow(2, attempt)
-    }
-}
-
-impl From<AsyncMixTaskError> for FangError {
-    fn from(err: AsyncMixTaskError) -> Self {
-        FangError { description: format!("{:#?}", err.0) }
     }
 }
 

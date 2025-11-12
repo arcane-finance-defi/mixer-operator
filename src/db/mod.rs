@@ -71,3 +71,27 @@ impl DatabaseStorage {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use crate::db::{DatabaseStorage, models::NoteRepository, set_pool_url};
+
+    pub struct Fixture {
+        ds: Arc<dyn NoteRepository>,
+    }
+
+    impl Fixture {
+        pub async fn prepare() -> Self {
+            set_pool_url(":memory:".to_string()).expect("in memory db");
+            Fixture {
+                ds: DatabaseStorage::note_storage().await.expect("note storage"),
+            }
+        }
+
+        pub fn db(&self) -> Arc<dyn NoteRepository> {
+            self.ds.clone()
+        }
+    }
+}

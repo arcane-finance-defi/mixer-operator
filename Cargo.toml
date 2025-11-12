@@ -1,6 +1,6 @@
 [package]
 name = "mixer-operator"
-version = "0.11.0"
+version = "0.11.2"
 edition = "2024"
 rust-version = "1.89"
 default-run = "mixer-operator"
@@ -28,8 +28,9 @@ rand = "0.9.1"
 rocket = { version = "0.5.1", features = ["json"] }
 rocket_cors = "0.6.0"
 # rocket_okapi = { version = "0.9.0", features = ["swagger"] }
-rocket_okapi = { git = "ssh://git@github.com/vakochetkov/okapi.git", branch = "not-rc-patch", features = ["swagger"] }
 # schemars = "1.0.4"
+# use fork of these ^^^ 2 because of unmerged derive features and various fixes in upstream  
+rocket_okapi = { git = "ssh://git@github.com/vakochetkov/okapi.git", branch = "not-rc-patch", features = ["swagger"] }
 thiserror = "2.0.12"
 tokio = "1.44.2"
 tokio-util = "0.7.8"
@@ -43,14 +44,34 @@ diesel_cli = { version = "2.1", optional = true }
 diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
 deadpool-diesel = { version = "0.6.1", features = ["sqlite", "tracing"] }
 
-fang = { git = "ssh://git@github.com/ayrat555/fang.git" , rev = "31a5ac64f86448e5ab736eaad227c366d4aece0a", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
-uuid = "1.18.1"
-typetag = "0.2.20"
-
+# NB: cannot use `sqlite` feature with sqlx/diesel because of `rusqlite` semver hazard
 miden-bridge = { git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git", branch = "main", features = ["std"] }
 miden-client = { version = "0.11.11", features = ["tonic", "sqlite"] }
 miden-objects = "0.11.5"
 itertools = "0.14.0"
+
+fang = { git = "ssh://git@github.com/ayrat555/fang.git" , rev = "31a5ac64f86448e5ab736eaad227c366d4aece0a", features = ["asynk-postgres", "migrations-postgres" ], default-features = false }
+uuid = "1.18.1"
+typetag = "0.2.20"
+
+
+# TODO
+# apalis = { version = "0.7.3", default-features = false, features = [
+#     "tracing",
+#     "retry",
+# ] }
+# apalis-cron = { version = "0.7.3" }
+# apalis-core = { version = "0.7.3", default-features = false }
+# apalis-sql = { version = "0.7.3", default-features = false, features = [
+#     "postgres",
+#     "tokio-comp",
+# ] }
+
+# ! DEPRECATED 
+# apalis = { version = "0.7.3", features = ["retry"] }
+# apalis-sql = { version = "0.7.3", features = ["postgres"] }
+# apalis-cron = { version = "0.7.3" }
+# sqlx = { version = "0.8.6", features = ["runtime-tokio-native-tls", "postgres"], default-features = false  }
 
 [dev-dependencies]
 tempfile = "3.23.0"

@@ -3,18 +3,16 @@ use std::{path::PathBuf, sync::Arc};
 use glob::glob;
 use miden_client::{
     Client as MidenClient, ClientError as MidenClientError, ExecutionOptions,
+    account::{AccountFile, AccountId},
     auth::BasicAuthenticator,
+    crypto::RpoRandomCoin,
+    note::{Note, NoteFile, NoteId},
     rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient},
     store::{Store, sqlite_store::SqliteStore},
-    transaction::{TransactionId, TransactionRequestBuilder, TransactionRequestError},
-};
-use miden_objects::{
-    AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word,
-    account::{AccountFile, AccountId},
-    crypto::rand::RpoRandomCoin,
-    note::{Note, NoteFile, NoteId},
+    transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
 };
+use miden_objects::{AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word};
 use rand::{Rng, rng, rngs::StdRng};
 use thiserror::Error;
 use tokio::fs::read;
@@ -111,13 +109,11 @@ impl MixerClient {
         supported_accounts_dir: PathBuf,
         public_accounts_to_import: Vec<String>,
     ) -> Result<(), MixerClientError> {
+        info!("Mixer operator initialization start");
         let mut supported_accounts_dir = supported_accounts_dir.to_str().unwrap().to_string();
         supported_accounts_dir.push_str("/*.mac");
 
-        info!("Mixer operator initialization start");
-
         self.client.sync_state().await?;
-
         info!("Mixer state synced");
 
         for path in glob(supported_accounts_dir.as_str()).unwrap().filter_map(Result::ok) {
@@ -147,12 +143,15 @@ impl MixerClient {
     }
 
     async fn cleanup(&self) -> Result<(), MixerClientError> {
+        info!("Clean-up");
         // self.store.remove_notes().await?;
 
         Ok(())
     }
 
     // #[tracing::instrument(skip_all)]
+    // TODO: should be deprecated in favour of mix_batch unified implementation
+    // TODO: or keep API compatibility and use mix_batch implementation underneath
     pub async fn mix(
         &mut self,
         note: Note,
@@ -170,43 +169,35 @@ impl MixerClient {
         // sync state with blockchain
         self.client.sync_state().await?;
 
-        // obtain a cryptographic proof that note exists within the blockchain's state
-        let fetched_note = self.rpc.get_note_by_id(note.id()).await?;
-
-        let note_file =
-            NoteFile::NoteWithProof(note.clone(), fetched_note.inclusion_proof().clone());
-
-        let note_id = self.client.import_note(note_file).await?;
-
         // obtain account to consume to
         let account = self.client.try_get_account(account_id).await;
 
-        // TODO: errors cast
+        // TODO: semantically wrong errors cast
         if let Err(MidenClientError::AccountDataNotFound(_)) = account {
             Err(MixerClientError::NotManageableAccountError(account_id.to_hex()))
         } else {
             Ok(())
         }?;
 
-        // TODO: client is needed only for submitting transaction,
         // sync state
         self.client.sync_state().await?;
 
-        let tx = self
-            .client
-            .new_transaction(
-                account_id,
-                TransactionRequestBuilder::new()
-                    .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
-                    .build_consume_notes(vec![note_id])?,
-            )
-            .await?;
-        info!("Built transaction");
+        info!("Build transaction request");
+        let tx_request = TransactionRequestBuilder::new()
+            .expected_output_recipients(vec![expected_bridge_note.recipient().clone()])
+            .unauthenticated_input_notes(vec![(note, None)])
+            // .own_output_notes(vec![OutputNote::Full(expected_bridge_note)])
+            .build()?;
+
+        info!("Perform transaction");
+        let tx = self.client.new_transaction(account_id, tx_request).await?;
 
         let tx_id = tx.executed_transaction().id();
+        info!("Executed Tx on MidenScan: https://testnet.midenscan.com/tx/{:?}", tx_id);
+        // TODO: check somehow note commitment
 
         self.client.submit_transaction(tx).await?;
-        info!("Submit transaction");
+        info!("Submitted transaction");
 
         self.cleanup().await?;
 
@@ -221,6 +212,7 @@ impl MixerClient {
 
     // TODO: result type should not neglect about individual note failures, so we can identify
     // errorneous notes and ignore them
+    #[tracing::instrument(skip_all)]
     pub async fn mix_batch(
         &mut self,
         notes: Vec<Note>,
@@ -234,7 +226,8 @@ impl MixerClient {
         self.check_accounts_manageable(&vec![account_id]).await?;
 
         // import notes to client store
-        let note_ids = self.import_notes(&notes).await?;
+        let _note_ids = self.import_notes(&notes).await?;
+
         // reconstruct expected note from the bridge
         let expected_bridge_notes: Vec<Note> =
             notes.iter().map(get_public_bridge_output_note).collect::<Result<Vec<_>, _>>()?;
@@ -244,22 +237,23 @@ impl MixerClient {
         // sync state
         self.client.sync_state().await?;
 
-        info!("Execute transaction");
-        let tx = self
-            .client
-            .new_transaction(
-                account_id,
-                TransactionRequestBuilder::new()
-                    .expected_output_recipients(expected_output_recipients)
-                    .build_consume_notes(note_ids)?,
-            )
-            .await?;
-        info!("Transaction finished");
+        info!("Build tx request");
+        let unauth_notes: Vec<(Note, Option<NoteArgs>)> =
+            notes.into_iter().map(|n| (n, None)).collect();
+        let tx_request = TransactionRequestBuilder::new()
+            .expected_output_recipients(expected_output_recipients)
+            .unauthenticated_input_notes(unauth_notes)
+            .build()?;
+
+        info!("Execute tx");
+        let tx = self.client.new_transaction(account_id, tx_request).await?;
+        info!("Tx finished");
 
         let tx_id = tx.executed_transaction().id();
+        info!("Executed Tx on MidenScan: https://testnet.midenscan.com/tx/{:?}", tx_id);
 
         self.client.submit_transaction(tx).await?;
-        info!("Submit transaction");
+        info!("Tx was submitted");
 
         self.cleanup().await?;
 

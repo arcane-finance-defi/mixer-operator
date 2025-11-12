@@ -6,7 +6,7 @@ use diesel::{
 
 use crate::db::schema;
 
-#[derive(Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
+#[derive(Clone, Queryable, Insertable, AsChangeset, QueryableByName, Selectable)]
 #[diesel(table_name = schema::notes)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct FullNote {
@@ -46,11 +46,13 @@ bitflags::bitflags! {
     pub struct NoteStatus: u8 {
         const UNDEFINED = 0x00;
         const ACCEPTED = 0x01;
-        const RECONSTRUCTED = 0x02;
-        const ONCHAIN = 0x04;
+        // const RECONSTRUCTED = 0x02;
+        // const ONCHAIN = 0x04;
         const TXED = 0x08;
-        const CONSUMED = 0x10;
+        // const CONSUMED = 0x10;
         const PROCESSING = 0x20;
+        // const RESERVED = 0x40;
+        const ERROR = 0x80;
     }
 }
 

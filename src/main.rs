@@ -8,7 +8,7 @@ use mixer_operator::{
     db, logging,
     mixer::{MixClientRequest, event_loop},
     state::MixerState,
-    task::worker::prepare_task_queue,
+    task::worker::{prepare_shared_mixer_client, prepare_task_queue},
 };
 use rocket::{Build, Rocket, http::Method};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
@@ -52,9 +52,7 @@ fn rocket(
         // legacy api
         .mount(
             "/",
-            rocket::routes![
-                api::mix::post_handler,
-            ],
+            api::healthcheck(if config.swagger_enabled() { api::RouterMode::WithSwagger } else { api::RouterMode::Native }),
         )
         // new api
         .mount(
@@ -113,9 +111,8 @@ async fn main() -> anyhow::Result<ExitCode> {
     });
 
     // Task queue
-    let task_queue = prepare_task_queue(tq_config, sender.clone())
-        .await
-        .with_context(|| "prepare task queue")?;
+    prepare_shared_mixer_client(sender.clone()).with_context(|| "prepare shared mixer client")?;
+    let task_queue = prepare_task_queue(tq_config).await.with_context(|| "prepare task queue")?;
     let task_queue = Arc::new(task_queue);
 
     // Main event loop for API launched by rocket

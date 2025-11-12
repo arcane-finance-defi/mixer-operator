@@ -64,7 +64,7 @@ pub async fn post_handler(
         Ok(Json(MixResponse::Instant { tx_id: vec![tx_id] }))
     } else {
         let note = Note::try_from(&data)?;
-        let full_note = fill_note_record(note, data.account_id, None, None)?;
+        let full_note = fill_note_record(note, data.account_id, Some(Utc::now()), None)?;
         add_to_note_repo(vec![full_note], note_repo).await?;
         Ok(Json(MixResponse::Empty))
     }
@@ -89,7 +89,7 @@ pub async fn post_batch_handler(
                 dest_address: req.dest_address,
                 serial_num_hex: req.serial_num_hex,
                 bridge_serial_num_hex: req.bridge_serial_num_hex,
-                amount: req.dest_chain_id,
+                amount: req.amount,
                 account_id: req.account_id,
                 instant: data.instant,
             });
@@ -200,7 +200,7 @@ async fn mix_delayed(
         trace!("Note {note_id} added to storage as {request_id}");
 
         let task = AsyncMixTask::new(&request_id.to_string(), scheduled_at);
-        task_queue.insert_task(&task).await?;
+        task_queue.schedule_task(&task as &dyn fang::AsyncRunnable).await?;
         trace!("Task for note {note_id} enqueued");
 
         responses.push(request_id.to_string());
@@ -221,7 +221,7 @@ async fn mix_instantly(
 
     for req in reqs {
         let note = Note::try_from(&req)?;
-        info!("Mixing note: {:?}", &note.id());
+        info!("Mixing note: {:?}", &note.id().to_string());
 
         let account_id = AccountId::from_hex(&req.account_id).map_err(EndpointError::from)?;
 
@@ -333,77 +333,82 @@ pub struct MixDelayedResponse {
 impl TryFrom<&MixRequest> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixRequest) -> Result<Self, Self::Error> {
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
+        };
+        note_try_from(&value)
     }
 }
 
 impl TryFrom<&MixDelayedRequest> for Note {
     type Error = anyhow::Error;
-
     fn try_from(value: &MixDelayedRequest) -> Result<Self, Self::Error> {
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
+        };
+        note_try_from(&value)
     }
 }
 
 impl TryFrom<&MixMetadata> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixMetadata) -> Result<Self, Self::Error> {
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
+        };
+        note_try_from(&value)
     }
 }
 
-fn fill_note_record(
+pub(super) struct NoteFrom<'a> {
+    pub serial_num_hex: &'a str,
+    pub bridge_serial_num_hex: &'a str,
+    pub dest_chain_id: u64,
+    pub dest_address: &'a str,
+    pub faucet_id: &'a str,
+    pub amount: u64,
+}
+
+pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
+    let faucet_id = AccountId::from_hex(value.faucet_id)?;
+
+    let note = new_crosschain_note(
+        parse_hex_string_as_word(value.serial_num_hex)
+            .map_err(|e| anyhow!("Failed to parse serial number hex {e:?}"))?
+            .into(),
+        parse_hex_string_as_word(value.bridge_serial_num_hex)
+            .map_err(|e| anyhow!("Failed to parse bridge serial number hex {e:?}"))?
+            .into(),
+        Felt::new(value.dest_chain_id),
+        evm_address_to_felts(value.dest_address)?,
+        None,
+        faucet_id,
+        value.amount,
+        faucet_id,
+        NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
+    )?;
+
+    Ok(note)
+}
+
+/// Fill `FullNote` model with NoteStatus ACCEPTED and datetime so "batch mix" worker can catch it
+/// up Optionally `request_id` can be specified for "delayed mix" worker
+pub(super) fn fill_note_record(
     note: Note,
     account_id: String,
     scheduled_date: Option<DateTime<Utc>>,
@@ -420,8 +425,7 @@ fn fill_note_record(
         note_id: serialized_note_id,
         note: serialized_note,
         account_id,
-        // ! for now just leave status blank to prevent from execution by legacy executors
-        status: models::NoteStatus::UNDEFINED, // TODO: del
+        status: models::NoteStatus::ACCEPTED,
         scheduled_datetime: scheduled_date.map(|d| d.naive_utc()),
         request_id: request_id.map(|r| r.to_owned()),
     })
@@ -431,7 +435,72 @@ fn fill_note_record(
 mod test {
     use rocket::serde::json;
 
-    use super::{BatchMixRequest, MixDelayedRequest, MixMetadata, MixRequest};
+    use super::{BatchMixRequest, MixDelayedRequest, MixMetadata, MixRequest, Note};
+
+    #[test]
+    fn note_try_from_mix_request() {
+        let mix_request = MixRequest {
+            dest_chain_id: 11155111,
+            dest_address: "0xA09E268420a7C43Be8e6af64E348482585C1a688".to_string(),
+            serial_num_hex: "0xc5f184597aae8760fc0506e721550c7a350b8a03e82bc1fd4badda244af696c5"
+                .to_string(),
+            bridge_serial_num_hex:
+                "0xc41914731dc9db66076460db409e5e88cc36b6827ab1fed9ac7c07e811d51832".to_string(),
+            account_id: "0x4de3bc8d67731a2067af0fcc7a2e34".to_string(),
+            amount: 700000,
+            instant: true,
+        };
+
+        let note = Note::try_from(&mix_request).expect("from MixRequest");
+
+        assert_eq!(
+            note.id().to_hex().as_str(),
+            "0xaae7ac59b582903a49a2dd43037d405443107d48f2c82f5eee790b857840a641"
+        );
+    }
+
+    #[test]
+    fn note_try_from_mix_delayed_request() {
+        let mix_request = MixDelayedRequest {
+            dest_chain_id: 11155111,
+            dest_address: "0xA09E268420a7C43Be8e6af64E348482585C1a688".to_string(),
+            serial_num_hex: "0xc5f184597aae8760fc0506e721550c7a350b8a03e82bc1fd4badda244af696c5"
+                .to_string(),
+            bridge_serial_num_hex:
+                "0xc41914731dc9db66076460db409e5e88cc36b6827ab1fed9ac7c07e811d51832".to_string(),
+            account_id: "0x4de3bc8d67731a2067af0fcc7a2e34".to_string(),
+            amount: 700000,
+            delayed_ms: 0,
+        };
+
+        let note = Note::try_from(&mix_request).expect("from MixDelayedRequest");
+
+        assert_eq!(
+            note.id().to_hex().as_str(),
+            "0xaae7ac59b582903a49a2dd43037d405443107d48f2c82f5eee790b857840a641"
+        );
+    }
+
+    #[test]
+    fn note_try_from_mix_metadata() {
+        let mix_request = MixMetadata {
+            dest_chain_id: 11155111,
+            dest_address: "0xA09E268420a7C43Be8e6af64E348482585C1a688".to_string(),
+            serial_num_hex: "0xc5f184597aae8760fc0506e721550c7a350b8a03e82bc1fd4badda244af696c5"
+                .to_string(),
+            bridge_serial_num_hex:
+                "0xc41914731dc9db66076460db409e5e88cc36b6827ab1fed9ac7c07e811d51832".to_string(),
+            account_id: "0x4de3bc8d67731a2067af0fcc7a2e34".to_string(),
+            amount: 700000,
+        };
+
+        let note = Note::try_from(&mix_request).expect("from MixMetadata");
+
+        assert_eq!(
+            note.id().to_hex().as_str(),
+            "0xaae7ac59b582903a49a2dd43037d405443107d48f2c82f5eee790b857840a641"
+        );
+    }
 
     #[test]
     fn test_mix_request_json_schema() {

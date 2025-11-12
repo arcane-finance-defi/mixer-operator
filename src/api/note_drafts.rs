@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use chrono::Utc;
+use miden_client::note::Note;
 use rocket::{
     State, get, post,
-    response::Responder,
     serde::{Deserialize, Serialize, json::Json},
 };
 use rocket_okapi::{
@@ -11,8 +12,11 @@ use rocket_okapi::{
     openapi,
 };
 
-use super::error::EndpointError;
-use crate::db::models::{NoteRepository, NoteRepositoryError, notes};
+use super::{
+    error::EndpointError,
+    mix::{NoteFrom, fill_note_record, note_try_from},
+};
+use crate::db::models::NoteRepository;
 
 /// Add single note to mix storage to execute with delay specified
 #[openapi(tag = "MixDraftRequest")]
@@ -21,18 +25,20 @@ use crate::db::models::{NoteRepository, NoteRepositoryError, notes};
 pub async fn post_new_handler(
     note_data: Json<MixDraftRequest>,
     note_repo: &State<Arc<dyn NoteRepository>>,
-) -> Result<Json<String>, ErrorResponse> {
-    let note: notes::FullNote = note_data.into_inner().try_into()?;
+) -> Result<Json<String>, EndpointError> {
+    let note_data = note_data.into_inner();
+    let note = Note::try_from(&note_data)?;
+    let note_id = &note.id();
+    let full_note = fill_note_record(note, note_data.account_id, Some(Utc::now()), None)?;
 
-    let note_id = note.note_id.clone();
     tracing::info!("Store note {note_id}");
 
     note_repo
-        .add_note(note)
+        .add_note(full_note)
         .await
         .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
 
-    Ok(Json(note_id))
+    Ok(Json(note_id.to_hex()))
 }
 
 /// Retrieve note status bitflags (integer with some bits set) by `note_id`
@@ -42,18 +48,12 @@ pub async fn post_new_handler(
 pub async fn get_status_handler(
     note_id: &str,
     note_repo: &State<Arc<dyn NoteRepository>>,
-) -> Result<Option<Json<u8>>, ErrorResponse> {
+) -> Result<Option<Json<u8>>, EndpointError> {
     let note_status = note_repo.get_note_status_by_id(note_id).await;
 
     match note_status {
         Ok(status) => Ok(Some(Json(status.bits()))),
-        Err(error) => match error {
-            NoteRepositoryError::NotFound(_) => Ok(None), // 404
-            NoteRepositoryError::Internal(inner) => Err(ErrorResponse { error: inner.to_string() }),
-            _any_other => Err(ErrorResponse {
-                error: "undefined note repository error".to_string(),
-            }),
-        },
+        Err(error) => Err(EndpointError::from(error)),
     }
 }
 
@@ -116,77 +116,46 @@ pub struct MixDraftRequest {
     account_id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Responder, rocket_okapi::OpenApiResponder)]
-#[serde(crate = "rocket::serde")]
-#[response(status = 500, content_type = "json")]
-pub struct ErrorResponse {
-    error: String,
-}
-
-impl From<EndpointError> for ErrorResponse {
-    fn from(value: EndpointError) -> Self {
-        Self { error: value.to_string() }
-    }
-}
-
 // TODO: should return normal error type
-impl TryFrom<MixDraftRequest> for crate::db::models::notes::FullNote {
-    type Error = ErrorResponse; // ! FIXME: bad, should return client error convertible to ErrorResponse
+// impl TryFrom<MixDraftRequest> for crate::db::models::notes::FullNote {
+//     type Error = anyhow::Error;
 
-    fn try_from(req: MixDraftRequest) -> Result<Self, Self::Error> {
-        // use miden_objects::block::BlockNumber;
-        use miden_objects::{
-            note::Note as OnchainNote,
-            utils::{Serializable as _, ToHex as _},
-        };
+//     fn try_from(req: MixDraftRequest) -> Result<Self, Self::Error> {
+//         // use miden_objects::block::BlockNumber;
+//         use miden_objects::{
+//             note::Note as OnchainNote,
+//             utils::{Serializable as _, ToHex as _},
+//         };
+//         note_try_from(&value)
 
-        use crate::db::models::notes as models;
+//         let note =
+//             OnchainNote::try_from(&req).map_err(|err| ErrorResponse { error: err.to_string() })?;
 
-        let note =
-            OnchainNote::try_from(&req).map_err(|err| ErrorResponse { error: err.to_string() })?;
+//         let serialized_note = note.to_bytes().to_hex();
+//         let serialized_note_id = note.id().to_string();
 
-        let serialized_note = note.to_bytes().to_hex();
-        let serialized_note_id = note.id().to_string();
-
-        Ok(models::FullNote {
-            note_id: serialized_note_id,
-            note: serialized_note,
-            account_id: req.account_id,
-            status: models::NoteStatus::ACCEPTED,
-            scheduled_datetime: None,
-            request_id: None,
-        })
-    }
-}
+//         Ok(models::FullNote {
+//             note_id: serialized_note_id,
+//             note: serialized_note,
+//             account_id: req.account_id,
+//             status: models::NoteStatus::ACCEPTED,
+//             scheduled_datetime: None,
+//             request_id: None,
+//         })
+//     }
+// }
 
 impl TryFrom<&MixDraftRequest> for miden_objects::note::Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixDraftRequest) -> Result<Self, Self::Error> {
-        use miden_bridge::{
-            notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
-            utils::evm_address_to_felts,
+        let value = NoteFrom {
+            serial_num_hex: &value.serial_num_hex,
+            bridge_serial_num_hex: &value.bridge_serial_num_hex,
+            dest_chain_id: value.dest_chain_id,
+            dest_address: &value.dest_address,
+            faucet_id: &value.account_id,
+            amount: value.amount,
         };
-        use miden_objects::{
-            Felt, account::AccountId, note::NoteTag, utils::parse_hex_string_as_word,
-        };
-
-        let faucet_id = AccountId::from_hex(&value.account_id)?;
-        let note = new_crosschain_note(
-            parse_hex_string_as_word(value.serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse serial number hex"))?
-                .into(),
-            parse_hex_string_as_word(value.bridge_serial_num_hex.as_str())
-                .map_err(|_| Self::Error::msg("Failed to parse bridge serial number hex"))?
-                .into(),
-            Felt::new(value.dest_chain_id),
-            evm_address_to_felts(&value.dest_address)?,
-            None,
-            faucet_id,
-            value.amount,
-            faucet_id,
-            NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-        )?;
-
-        Ok(note)
+        note_try_from(&value)
     }
 }

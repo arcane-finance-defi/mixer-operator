@@ -19,6 +19,7 @@ pub(super) async fn set_note_txed(
     }
 }
 
+#[allow(dead_code)]
 #[tracing::instrument(skip(storage, note_ids))]
 pub(super) async fn set_notes_txed(
     storage: &dyn NoteRepository,
@@ -37,9 +38,11 @@ pub(super) async fn poll_for_ready_notes(
     storage: &dyn NoteRepository,
     date: DateTime<Utc>,
 ) -> anyhow::Result<Vec<FullNote>> {
-    let status = NoteStatus::ACCEPTED & !NoteStatus::TXED & !NoteStatus::PROCESSING;
+    // poll for tasks being ACCEPTED yet not TXED or PROCESSING
+    let set_mask = Some(NoteStatus::ACCEPTED);
+    let reset_mask = Some(NoteStatus::TXED | NoteStatus::PROCESSING);
 
-    let notes = match storage.get_notes_by_status_and_date(status, date).await {
+    let notes = match storage.get_notes_by_status_mask_and_date(set_mask, reset_mask, date).await {
         Ok(notes) => notes,
         Err(err) => bail!("reading notes storage error {err:#?}"),
     };
@@ -47,6 +50,7 @@ pub(super) async fn poll_for_ready_notes(
     Ok(notes)
 }
 
+#[allow(dead_code)]
 pub(super) async fn set_note_processing(
     storage: &dyn NoteRepository,
     note_ids: &[&str],
@@ -83,4 +87,22 @@ pub(super) async fn set_note_processing(
         bail!("unable to update processing status with error {err:#?}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_note_status_biflags() {
+        let status = NoteStatus::ACCEPTED & !NoteStatus::TXED & !NoteStatus::PROCESSING;
+        assert_eq!(status.bits(), 1);
+
+        let status = NoteStatus::ACCEPTED | NoteStatus::TXED;
+        assert_eq!(status.bits(), 9);
+
+        let check_status = NoteStatus::ACCEPTED & !NoteStatus::TXED & !NoteStatus::PROCESSING;
+        assert!(status | check_status == status);
+        assert!(status & check_status == check_status);
+    }
 }
