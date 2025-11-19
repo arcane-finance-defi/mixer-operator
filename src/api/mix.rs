@@ -7,11 +7,10 @@ use miden_bridge::{
     notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
     utils::evm_address_to_felts,
 };
-use miden_client::Felt;
+use miden_client::{Felt, Word};
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteTag},
-    utils::parse_hex_string_as_word,
 };
 use rocket::{
     State as RocketState, get, post,
@@ -387,13 +386,12 @@ pub(super) struct NoteFrom<'a> {
 pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
     let faucet_id = AccountId::from_hex(value.faucet_id)?;
 
+    // NB: https://github.com/0xMiden/crypto/pull/450 parse_hex_string_as_word -> Word::parse
     let note = new_crosschain_note(
-        parse_hex_string_as_word(value.serial_num_hex)
-            .map_err(|e| anyhow!("Failed to parse serial number hex {e:?}"))?
-            .into(),
-        parse_hex_string_as_word(value.bridge_serial_num_hex)
-            .map_err(|e| anyhow!("Failed to parse bridge serial number hex {e:?}"))?
-            .into(),
+        Word::parse(value.serial_num_hex)
+            .map_err(|e| anyhow!("Failed to parse serial number hex {e:?}"))?,
+        Word::parse(value.bridge_serial_num_hex)
+            .map_err(|e| anyhow!("Failed to parse bridge serial number hex {e:?}"))?,
         Felt::new(value.dest_chain_id),
         evm_address_to_felts(value.dest_address)?,
         None,
