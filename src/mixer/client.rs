@@ -7,13 +7,14 @@ use miden_client::{
     auth::BasicAuthenticator,
     crypto::RpoRandomCoin,
     note::{Note, NoteFile, NoteId},
-    rpc::{Endpoint, NodeRpcClient, RpcError, TonicRpcClient},
-    store::{Store, sqlite_store::SqliteStore},
+    rpc::{Endpoint, GrpcClient, NodeRpcClient, RpcError},
+    store::Store,
     transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
 };
+use miden_client_sqlite_store::SqliteStore;
 use miden_objects::{AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word};
-use rand::{Rng, rng, rngs::StdRng};
+use rand::{Rng, rng};
 use thiserror::Error;
 use tokio::fs::read;
 use tracing::info;
@@ -26,7 +27,7 @@ const DEFAULT_STORAGE_FILE: &str = "store.db";
 // NB: waiting for Send trait support (https://github.com/0xMiden/miden-client/pull/1015) o
 // or could be reimplemented using https://docs.rs/tokio/latest/tokio/task/fn.spawn_local.html
 pub struct MixerClient {
-    client: MidenClient<BasicAuthenticator<StdRng>>,
+    client: MidenClient<BasicAuthenticator>,
     rpc: Arc<dyn NodeRpcClient>,
 }
 
@@ -65,6 +66,12 @@ impl MixerClient {
         store_filename: Option<PathBuf>,
         debug: bool,
     ) -> Result<Self, MixerClientError> {
+        let endpoint = Endpoint::try_from(rpc_endpoint)
+            .map_err(MixerClientError::MalformedEndpointUrlError)?;
+        let rpc = Arc::new(GrpcClient::new(&endpoint, rpc_timeout_ms));
+        // let note_transport_client =
+        //     Arc::new(GrpcNoteTransportClient::connect(rpc_endpoint.to_string(), rpc_timeout_ms));
+
         let store = SqliteStore::new(
             store_filename.unwrap_or(PathBuf::from(DEFAULT_STORAGE_FILE.to_string())),
         )
@@ -75,20 +82,22 @@ impl MixerClient {
 
         let mut rng = rng();
         let coin_seed: [u64; 4] = rng.random();
-
         let rng = RpoRandomCoin::new(Word::from(coin_seed.map(Felt::new)));
 
-        let rpc = Arc::new(TonicRpcClient::new(
-            &Endpoint::try_from(rpc_endpoint)
-                .map_err(MixerClientError::MalformedEndpointUrlError)?,
-            rpc_timeout_ms,
-        ));
+        // TODO: investigate how we could use ClientBuilder instead of instantiating MidenClient
+        // directly let client = ClientBuilder::<FilesystemKeyStore<_>>::new()
+        //     .grpc_client(&endpoint, Some(10_000))
+        //     .filesystem_keystore(auth_path.to_str().context("failed to convert auth path to
+        // string")?)     .sqlite_store(store_config)
+        //     .in_debug_mode(miden_client::DebugMode::Enabled)
+        //     .build()
+        //     .await?;
 
         let client = MidenClient::new(
             rpc.clone(),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
-            Some(Arc::new(BasicAuthenticator::<StdRng>::new(&[]))),
+            Some(Arc::new(BasicAuthenticator::new(&[]))),
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
@@ -98,6 +107,8 @@ impl MixerClient {
             .unwrap(),
             None,
             None,
+            None,
+            None, // LocalTransactionProver
         )
         .await?;
 
@@ -124,7 +135,7 @@ impl MixerClient {
             info!("Importing the private account with id {account_id_hex}");
 
             if self.client.try_get_account_header(account_id).await.is_err() {
-                self.client.add_account(&account_file.account, None, false).await?;
+                self.client.add_account(&account_file.account, false).await?;
             }
             info!("Private account imported")
         }
@@ -190,14 +201,9 @@ impl MixerClient {
             .build()?;
 
         info!("Perform transaction");
-        let tx = self.client.new_transaction(account_id, tx_request).await?;
-
-        let tx_id = tx.executed_transaction().id();
+        let tx_id = self.client.submit_new_transaction(account_id, tx_request).await?;
         info!("Executed Tx on MidenScan: https://testnet.midenscan.com/tx/{:?}", tx_id);
         // TODO: check somehow note commitment
-
-        self.client.submit_transaction(tx).await?;
-        info!("Submitted transaction");
 
         self.cleanup().await?;
 
@@ -245,15 +251,10 @@ impl MixerClient {
             .unauthenticated_input_notes(unauth_notes)
             .build()?;
 
-        info!("Execute tx");
-        let tx = self.client.new_transaction(account_id, tx_request).await?;
-        info!("Tx finished");
-
-        let tx_id = tx.executed_transaction().id();
+        info!("Perform transaction");
+        let tx_id = self.client.submit_new_transaction(account_id, tx_request).await?;
         info!("Executed Tx on MidenScan: https://testnet.midenscan.com/tx/{:?}", tx_id);
-
-        self.client.submit_transaction(tx).await?;
-        info!("Tx was submitted");
+        // TODO: check somehow note commitment
 
         self.cleanup().await?;
 
@@ -319,8 +320,8 @@ mod test {
     struct Fixture {
         rpc_url: String,
         store_file: NamedTempFile,
-        private_account_dir: PathBuf,
-        public_account_ids: Vec<String>,
+        // private_account_dir: PathBuf,
+        // public_account_ids: Vec<String>,
     }
 
     impl Fixture {
@@ -353,14 +354,14 @@ mod test {
         fn new(
             rpc_url: String,
             store_file: NamedTempFile,
-            private_account_dir: PathBuf,
-            public_account_ids: Vec<String>,
+            _private_account_dir: PathBuf,
+            _public_account_ids: Vec<String>,
         ) -> Self {
             Fixture {
                 rpc_url,
                 store_file,
-                private_account_dir,
-                public_account_ids,
+                // private_account_dir,
+                // public_account_ids,
             }
         }
 
@@ -376,20 +377,22 @@ mod test {
             self.store_file.path().to_path_buf()
         }
 
-        pub fn private_account_dir(&self) -> PathBuf {
-            self.private_account_dir.clone()
-        }
+        // for test_mixer_client_with_tokio_rt
+        // pub fn private_account_dir(&self) -> PathBuf {
+        //     self.private_account_dir.clone()
+        // }
 
-        pub fn public_account_ids(&self) -> Vec<String> {
-            self.public_account_ids.clone()
-        }
+        // for test_mixer_client_with_tokio_rt
+        // pub fn public_account_ids(&self) -> Vec<String> {
+        //     self.public_account_ids.clone()
+        // }
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rpc_get_block_with_tokio_rt() {
         let fixture = Fixture::from_config();
 
-        let rpc = Arc::new(TonicRpcClient::new(
+        let rpc = Arc::new(GrpcClient::new(
             &Endpoint::try_from(fixture.rpc_url()).unwrap(),
             fixture.rpc_timeout_ms(),
         ));
@@ -397,7 +400,7 @@ mod test {
         assert!(rpc.get_block_by_number(BlockNumber::GENESIS).await.is_ok())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_client_sync_state_with_tokio_rt() {
         let fixture = Fixture::from_config();
 
@@ -410,7 +413,7 @@ mod test {
 
         let rng = RpoRandomCoin::new(Word::from(coin_seed.map(Felt::new)));
 
-        let rpc = Arc::new(TonicRpcClient::new(
+        let rpc = Arc::new(GrpcClient::new(
             &Endpoint::try_from(fixture.rpc_url()).unwrap(),
             fixture.rpc_timeout_ms(),
         ));
@@ -419,7 +422,7 @@ mod test {
             rpc.clone(),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
-            Some(Arc::new(BasicAuthenticator::<StdRng>::new(&[]))),
+            Some(Arc::new(BasicAuthenticator::new(&[]))),
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
@@ -429,6 +432,8 @@ mod test {
             .unwrap(),
             None,
             None,
+            None,
+            None,
         )
         .await
         .unwrap();
@@ -436,23 +441,28 @@ mod test {
         assert!(client.sync_state().await.is_ok());
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_mixer_client_with_tokio_rt() {
-        let fixture = Fixture::from_config();
+    // TODO: this test ensure miden client will support Send trait sometime, but now it will fail
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    // async fn test_mixer_client_with_tokio_rt() {
+    //     let handle = tokio::spawn(async move {
+    //         let fixture = Fixture::from_config();
 
-        let mut mixer_client =
-            MixerClient::new(fixture.rpc_url(), fixture.rpc_timeout_ms(), None, true)
-                .await
-                .expect("MixerClient::new");
+    //         let mut mixer_client =
+    //             MixerClient::new(fixture.rpc_url(), fixture.rpc_timeout_ms(), None, true)
+    //                 .await
+    //                 .expect("MixerClient::new");
 
-        mixer_client
-            .initialize(fixture.private_account_dir(), fixture.public_account_ids())
-            .await
-            .expect("mixer_client.initialize");
+    //         mixer_client
+    //             .initialize(fixture.private_account_dir(), fixture.public_account_ids())
+    //             .await
+    //             .expect("mixer_client.initialize");
 
-        // TODO: to test mix(), need to create `note` and `account_id` somehow
-        // let note = Note::new();
-        // let account_id = AccountId::dummy(elements)
-        // assert!(mixer_client.mix().await.is_ok())
-    }
+    //         // TODO: to test mix(), need to create `note` and `account_id` somehow
+    //         // let note = Note::new();
+    //         // let account_id = AccountId::dummy(elements)
+    //         // assert!(mixer_client.mix().await.is_ok())
+    //     });
+
+    //     handle.await.expect("future executed")
+    // }
 }

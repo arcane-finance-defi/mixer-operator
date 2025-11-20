@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.89-trixie AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.90-trixie AS chef
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 WORKDIR /app
 
