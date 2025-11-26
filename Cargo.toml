@@ -70,8 +70,6 @@ miden-objects = "0.12.3"
 
 [dependencies.miden-bridge]
 git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git"
-# TODO: replace with "main" as PR ready
-branch = "feat/prepare-for-bridge-miden-0.12.0"
 features = ["std"]
 
 [dev-dependencies]

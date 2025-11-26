@@ -2425,7 +2425,7 @@ dependencies = [
 [[package]]
 name = "miden-bridge"
 version = "0.2.0"
-source = "git+ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git?branch=feat%2Fprepare-for-bridge-miden-0.12.0#bdb7f08d087f3d2436a4c8f83d627af87787ba26"
+source = "git+ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git#76f9104771e85f71ab49ec86e41de02bd58d5b7b"
 dependencies = [
  "alloy-primitives",
  "anyhow",
