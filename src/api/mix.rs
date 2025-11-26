@@ -388,10 +388,8 @@ pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
 
     // NB: https://github.com/0xMiden/crypto/pull/450 parse_hex_string_as_word -> Word::parse
     let note = new_crosschain_note(
-        Word::parse(value.serial_num_hex)
-            .map_err(|e| anyhow!("Failed to parse serial number hex {e:?}"))?,
-        Word::parse(value.bridge_serial_num_hex)
-            .map_err(|e| anyhow!("Failed to parse bridge serial number hex {e:?}"))?,
+        Word::try_from(value.serial_num_hex)?,
+        Word::try_from(value.bridge_serial_num_hex)?,
         Felt::new(value.dest_chain_id),
         evm_address_to_felts(value.dest_address)?,
         None,
