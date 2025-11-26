@@ -33,14 +33,14 @@ pub async fn post_new_handler(
     let note_id = &note.id().to_hex();
     let note_recipient = note.recipient().digest().to_hex();
 
-    let try_after_seconds: i64 = note_data.try_after_seconds.unwrap_or(DEFAULT_TRY_AFTER_SECONDS)
-        .into();
+    let try_after_seconds: i64 =
+        note_data.try_after_seconds.unwrap_or(DEFAULT_TRY_AFTER_SECONDS).into();
 
     let full_note = fill_note_record(
         note.clone(),
         note_data.account_id,
         Some(Utc::now() + Duration::seconds(try_after_seconds)),
-        None
+        None,
     )?;
 
     tracing::info!("Store note id: {note_id} recipient: {note_recipient}");
@@ -50,12 +50,10 @@ pub async fn post_new_handler(
         .await
         .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
 
-    Ok(Json(
-        MixDraftResponse {
-            note_id: note_id.to_string(),
-            recipient_hex: note_recipient.to_string(),
-        }
-    ))
+    Ok(Json(MixDraftResponse {
+        note_id: note_id.to_string(),
+        recipient_hex: note_recipient.to_string(),
+    }))
 }
 
 /// Retrieve note status bitflags (integer with some bits set) by `note_id`
@@ -131,7 +129,7 @@ pub struct MixDraftRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
-    try_after_seconds: Option<u32>
+    try_after_seconds: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
