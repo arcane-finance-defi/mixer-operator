@@ -76,3 +76,6 @@ features = ["std"]
 
 [dev-dependencies]
 tempfile = "3.23.0"
+
+[patch.crates-io]
+miden-client = { version = "0.12", git = "https://github.com/0xMiden/miden-client", rev = "fb6b71a60d526e2c0135bda57b64070e825b9da8"}
