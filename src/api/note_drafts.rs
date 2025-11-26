@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use chrono::Utc;
+use chrono::{Duration, Timelike, Utc};
 use miden_client::note::Note;
 use rocket::{
     State, get, post,
@@ -18,6 +18,8 @@ use super::{
 };
 use crate::db::models::NoteRepository;
 
+const DEFAULT_TRY_AFTER_SECONDS: u32 = 15;
+
 /// Add single note to mix storage to execute with delay specified
 #[openapi(tag = "MixDraftRequest")]
 #[post("/note-drafts/new", data = "<note_data>")]
@@ -25,20 +27,35 @@ use crate::db::models::NoteRepository;
 pub async fn post_new_handler(
     note_data: Json<MixDraftRequest>,
     note_repo: &State<Arc<dyn NoteRepository>>,
-) -> Result<Json<String>, EndpointError> {
+) -> Result<Json<MixDraftResponse>, EndpointError> {
     let note_data = note_data.into_inner();
     let note = Note::try_from(&note_data)?;
-    let note_id = &note.id();
-    let full_note = fill_note_record(note, note_data.account_id, Some(Utc::now()), None)?;
+    let note_id = &note.id().to_hex();
+    let note_recipient = note.recipient().digest().to_hex();
 
-    tracing::info!("Store note {note_id}");
+    let try_after_seconds: i64 = note_data.try_after_seconds.unwrap_or(DEFAULT_TRY_AFTER_SECONDS)
+        .try_into().unwrap();
+
+    let full_note = fill_note_record(
+        note.clone(),
+        note_data.account_id,
+        Some(Utc::now() + Duration::seconds(try_after_seconds)),
+        None
+    )?;
+
+    tracing::info!("Store note id: {note_id} recipient: {note_recipient}");
 
     note_repo
         .add_note(full_note)
         .await
         .map_err(|e| EndpointError::from(anyhow!(e.to_string())))?;
 
-    Ok(Json(note_id.to_hex()))
+    Ok(Json(
+        MixDraftResponse {
+            note_id: note_id.to_string(),
+            recipient_hex: note_recipient.to_string(),
+        }
+    ))
 }
 
 /// Retrieve note status bitflags (integer with some bits set) by `note_id`
@@ -114,6 +131,14 @@ pub struct MixDraftRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
+    try_after_seconds: Option<u32>
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+pub struct MixDraftResponse {
+    note_id: String,
+    recipient_hex: String,
 }
 
 // TODO: should return normal error type

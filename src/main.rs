@@ -2,6 +2,7 @@ use std::{process::ExitCode, sync::Arc};
 
 use anyhow::Context as _;
 use fang::AsyncQueue;
+use miden_bridge::notes::bridge::croschain;
 use mixer_operator::{
     PACKAGE, VERSION, api,
     config::Config,
@@ -70,6 +71,7 @@ fn rocket(
 async fn main() -> anyhow::Result<ExitCode> {
     setup_panic_hook();
     dotenvy::dotenv().ok();
+    println!("CROSSCHAIN script root: {}", croschain().root().to_hex());
 
     logging::init();
     info!("Starting {PACKAGE}, version {VERSION}");
