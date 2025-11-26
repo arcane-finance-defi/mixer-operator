@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use chrono::{Duration, Timelike, Utc};
+use chrono::{Duration, Utc};
 use miden_client::note::Note;
 use rocket::{
     State, get, post,
@@ -34,7 +34,7 @@ pub async fn post_new_handler(
     let note_recipient = note.recipient().digest().to_hex();
 
     let try_after_seconds: i64 = note_data.try_after_seconds.unwrap_or(DEFAULT_TRY_AFTER_SECONDS)
-        .try_into().unwrap();
+        .into();
 
     let full_note = fill_note_record(
         note.clone(),
