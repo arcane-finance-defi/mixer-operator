@@ -35,16 +35,33 @@ pub struct MixerClient {
     rpc: Arc<dyn NodeRpcClient>,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 enum NoteAvailabilityStatus {
     Onchain,
     NotFound,
     Consumed,
 }
 
+#[derive(Clone)]
 struct NoteCheckResult {
     note: Note,
     status: NoteAvailabilityStatus,
+}
+
+#[derive(Debug)]
+pub struct MixBatchResult {
+    tx_id: Option<TransactionId>,
+    not_found_notes: Vec<NoteId>,
+}
+
+impl MixBatchResult {
+    pub fn tx_id(&self) -> Option<&TransactionId> {
+        self.tx_id.as_ref()
+    }
+
+    pub fn not_found_notes(&self) -> &Vec<NoteId> {
+        &self.not_found_notes
+    }
 }
 
 #[derive(Error, Debug)]
@@ -258,7 +275,7 @@ impl MixerClient {
         &mut self,
         notes: Vec<Note>,
         account_id: AccountId,
-    ) -> Result<Option<TransactionId>, MixerClientError> {
+    ) -> Result<MixBatchResult, MixerClientError> {
         if notes.len() > MAX_NOTES_IN_BATCH_TRANSACTION {
             return Err(MixerClientError::TransactionNotesLimit());
         }
@@ -270,7 +287,10 @@ impl MixerClient {
                 let check_result: Option<NoteCheckResult> = match status {
                     Ok(NoteAvailabilityStatus::NotFound) => {
                         trace!("Note with id {} not found onchain", note.id().to_hex());
-                        None
+                        Some(NoteCheckResult {
+                            note,
+                            status: NoteAvailabilityStatus::NotFound,
+                        })
                     },
                     Ok(NoteAvailabilityStatus::Onchain) => Some(NoteCheckResult {
                         note,
@@ -294,13 +314,20 @@ impl MixerClient {
             .await;
 
         let notes: Vec<Note> = checked_notes
+            .clone()
             .into_iter()
             .filter(|n| n.status == NoteAvailabilityStatus::Onchain)
             .map(|n| n.note)
             .collect();
 
+        let not_found_notes: Vec<NoteId> = checked_notes
+            .into_iter()
+            .filter(|n| n.status == NoteAvailabilityStatus::NotFound)
+            .map(|n| n.note.id())
+            .collect();
+
         if notes.is_empty() {
-            return Ok(None);
+            return Ok(MixBatchResult { tx_id: None, not_found_notes });
         }
 
         self.check_crosschain_notes(&notes).await?;
@@ -333,7 +360,7 @@ impl MixerClient {
 
         self.cleanup().await?;
 
-        Ok(Some(tx_id))
+        Ok(MixBatchResult { tx_id: Some(tx_id), not_found_notes })
     }
 
     async fn check_crosschain_notes(&mut self, notes: &Vec<Note>) -> Result<(), MixerClientError> {

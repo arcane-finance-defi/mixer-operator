@@ -3,7 +3,6 @@ use std::time::Duration;
 use miden_objects::{
     account::AccountId,
     note::{Note, NoteId},
-    transaction::TransactionId,
 };
 use tokio::{
     runtime::Runtime,
@@ -13,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::MidenClient as MidenClientConfig,
-    mixer::client::{MixerClient, MixerClientError},
+    mixer::client::{MixBatchResult, MixerClient, MixerClientError},
 };
 
 mod bridge;
@@ -35,7 +34,7 @@ pub enum MixClientRequest {
     MixBatch {
         notes: Vec<Note>,
         account_id: AccountId,
-        response_sink: MixerClientResponse<Option<TransactionId>>,
+        response_sink: MixerClientResponse<MixBatchResult>,
     },
     Poll {
         note_id: NoteId,

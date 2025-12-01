@@ -1,11 +1,12 @@
 use anyhow::{Context as _, anyhow};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use miden_objects::note::NoteId;
 use notes::{FullNote, NoteStatus};
 use thiserror::Error;
 
 use super::{DatabaseStorage, schema};
-use crate::db::models::notes::NoteDetails;
+use crate::{db::models::notes::NoteDetails, mixer::client::MixBatchResult};
 
 pub mod notes;
 
@@ -465,7 +466,7 @@ impl NoteRepository for DatabaseStorage {
                         .collect::<Result<Vec<_>, _>>()?;
 
                     // send batch request
-                    let (request, response) = tokio::sync::oneshot::channel::<Result<Option<TransactionId>, MixerClientError>>();
+                    let (request, response) = tokio::sync::oneshot::channel::<Result<MixBatchResult, MixerClientError>>();
                     client
                         .blocking_send(MixClientRequest::MixBatch {
                             notes: miden_notes,
@@ -474,16 +475,22 @@ impl NoteRepository for DatabaseStorage {
                         })
                         .map_err(|e| NoteRepositoryError::Internal(anyhow!("client send error {e}")))?;
 
-                    // await for result of mixing (transaction id)
-                    let tx_id: Option<TransactionId> = response.blocking_recv()
+                    // await for result of mixing (transaction id, not found notes)
+                    let mix_result: MixBatchResult = response.blocking_recv()
                         .with_context(|| format!("response mix batch error for {account_id}"))?
                         .with_context(|| format!("internal mix batch error for {account_id}"))?;
 
+                    let note_ids: Vec<_> = note_ids.into_iter()
+                        .filter(|note_id| !mix_result.not_found_notes()
+                            .contains(&NoteId::try_from_hex(note_id).unwrap())
+                        )
+                        .collect();
+
                     // update notes' statuses in the table
-                    for note_id in note_ids.iter() {
+                    for note_id in note_ids {
                         let status = schema::notes::table
                             .select(NoteDetails::as_select())
-                            .filter(db_note_id.eq(note_id))
+                            .filter(db_note_id.eq(&note_id))
                             .first::<NoteDetails>(conn)?
                             .status;
 
@@ -496,7 +503,7 @@ impl NoteRepository for DatabaseStorage {
                             }
                     }
 
-                    Ok(tx_id.map(|id| id.to_string())) // TODO: how does this error coercion works? 0_o
+                    Ok(mix_result.tx_id().map(|id: &TransactionId| id.to_string())) // TODO: how does this error coercion works? 0_o
                 })
                 // END TRANSACTION
             })
