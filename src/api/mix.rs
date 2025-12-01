@@ -526,6 +526,7 @@ mod test {
             bridge_serial_num_hex: "0xsomehexbridge".to_string(),
             amount: 50000,
             account_id: "0xsomehex".to_string(),
+            sender_id: None,
             instant: true,
         };
         let expected_request: &str = r#"{
@@ -535,6 +536,7 @@ mod test {
             "bridge_serial_num_hex": "0xsomehexbridge",
             "amount": 50000,
             "account_id": "0xsomehex",
+            "sender_id": null,
             "instant": true
             }"#;
         let expected_request = expected_request.replace("\n", "");
@@ -555,6 +557,7 @@ mod test {
                     serial_num_hex: "0xsomehexserial".to_string(),
                     bridge_serial_num_hex: "0xsomehexbridge".to_string(),
                     amount: 50000,
+                    sender_id: None,
                     account_id: "0xsomehex".to_string(),
                 },
                 MixMetadata {
@@ -564,6 +567,7 @@ mod test {
                     bridge_serial_num_hex: "0xsomehexbridge2".to_string(),
                     amount: u64::MAX,
                     account_id: "0xsomehex2".to_string(),
+                    sender_id: None,
                 },
             ],
             instant: false,
@@ -576,6 +580,7 @@ mod test {
                     "serial_num_hex": "0xsomehexserial",
                     "bridge_serial_num_hex": "0xsomehexbridge",
                     "account_id": "0xsomehex",
+                    "sender_id": null,
                     "amount": 50000
                 },
                 {
@@ -584,6 +589,7 @@ mod test {
                     "serial_num_hex": "0xsomehexserial2",
                     "bridge_serial_num_hex": "0xsomehexbridge2",
                     "account_id": "0xsomehex2",
+                    "sender_id": null,
                     "amount": 18446744073709551615
                 }
             ],
@@ -606,6 +612,7 @@ mod test {
             bridge_serial_num_hex: "0xsomehexbridge".to_string(),
             amount: 50000,
             account_id: "0xsomehex".to_string(),
+            sender_id: None,
             delayed_ms: u64::MAX,
         };
         let expected_request: &str = r#"{
@@ -615,6 +622,7 @@ mod test {
             "bridge_serial_num_hex": "0xsomehexbridge",
             "amount": 50000,
             "account_id": "0xsomehex",
+            "sender_id": null,
             "delayed_ms": 18446744073709551615
             }"#;
         let expected_request = expected_request.replace("\n", "");
