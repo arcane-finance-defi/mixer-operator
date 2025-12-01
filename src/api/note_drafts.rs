@@ -129,6 +129,7 @@ pub struct MixDraftRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
+    sender_id: Option<String>,
     try_after_seconds: Option<u32>,
 }
 
@@ -171,12 +172,16 @@ pub struct MixDraftResponse {
 impl TryFrom<&MixDraftRequest> for miden_objects::note::Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixDraftRequest) -> Result<Self, Self::Error> {
+        let account_id = value.account_id.clone();
+        let sender_id = value.sender_id.clone();
+
         let value = NoteFrom {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
             dest_address: &value.dest_address,
-            faucet_id: &value.account_id,
+            faucet_id: &account_id,
+            sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
         };
         note_try_from(&value)

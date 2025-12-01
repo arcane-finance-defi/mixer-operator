@@ -90,6 +90,7 @@ pub async fn post_batch_handler(
                 bridge_serial_num_hex: req.bridge_serial_num_hex,
                 amount: req.amount,
                 account_id: req.account_id,
+                sender_id: req.sender_id,
                 instant: data.instant,
             });
         }
@@ -282,6 +283,7 @@ pub struct MixRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
+    sender_id: Option<String>,
     instant: bool,
 }
 
@@ -293,6 +295,7 @@ pub struct MixMetadata {
     serial_num_hex: String,
     bridge_serial_num_hex: String,
     account_id: String,
+    sender_id: Option<String>,
     amount: u64,
 }
 
@@ -320,6 +323,7 @@ pub struct MixDelayedRequest {
     bridge_serial_num_hex: String,
     amount: u64,
     account_id: String,
+    sender_id: Option<String>,
     delayed_ms: u64,
 }
 
@@ -332,12 +336,16 @@ pub struct MixDelayedResponse {
 impl TryFrom<&MixRequest> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixRequest) -> Result<Self, Self::Error> {
+        let account_id = value.account_id.clone();
+        let sender_id = value.sender_id.clone();
+
         let value = NoteFrom {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
             dest_address: &value.dest_address,
-            faucet_id: &value.account_id,
+            faucet_id: &account_id,
+            sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
         };
         note_try_from(&value)
@@ -347,12 +355,16 @@ impl TryFrom<&MixRequest> for Note {
 impl TryFrom<&MixDelayedRequest> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixDelayedRequest) -> Result<Self, Self::Error> {
+        let account_id = value.account_id.clone();
+        let sender_id = value.sender_id.clone();
+
         let value = NoteFrom {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
             dest_address: &value.dest_address,
-            faucet_id: &value.account_id,
+            faucet_id: &account_id,
+            sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
         };
         note_try_from(&value)
@@ -362,12 +374,16 @@ impl TryFrom<&MixDelayedRequest> for Note {
 impl TryFrom<&MixMetadata> for Note {
     type Error = anyhow::Error;
     fn try_from(value: &MixMetadata) -> Result<Self, Self::Error> {
+        let account_id = value.account_id.clone();
+        let sender_id = value.sender_id.clone();
+
         let value = NoteFrom {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
             dest_address: &value.dest_address,
-            faucet_id: &value.account_id,
+            faucet_id: &account_id,
+            sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
         };
         note_try_from(&value)
@@ -380,11 +396,13 @@ pub(super) struct NoteFrom<'a> {
     pub dest_chain_id: u64,
     pub dest_address: &'a str,
     pub faucet_id: &'a str,
+    pub sender_id: &'a str,
     pub amount: u64,
 }
 
 pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
     let faucet_id = AccountId::from_hex(value.faucet_id)?;
+    let sender_id = AccountId::from_hex(value.sender_id)?;
 
     // NB: https://github.com/0xMiden/crypto/pull/450 parse_hex_string_as_word -> Word::parse
     let note = new_crosschain_note(
@@ -395,7 +413,7 @@ pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
         None,
         faucet_id,
         value.amount,
-        faucet_id,
+        sender_id,
         NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
     )?;
 
