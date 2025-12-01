@@ -35,6 +35,7 @@ rocket_okapi = { git = "ssh://git@github.com/vakochetkov/okapi.git", branch = "n
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full", "rt-multi-thread"] }
 tokio-util = "0.7.8"
+tokio-stream = "0.1.17"
 tracing = { version = "0.1.41", features = ["max_level_trace", "release_max_level_debug"] }
 tracing-log = "0.2.0"
 tracing-futures = { version = "0.2.5", default-features = false }
@@ -67,6 +68,7 @@ typetag = "0.2.20"
 miden-client = { version = "0.12.3", features = ["std", "tonic"] }
 miden-client-sqlite-store = { version = "0.12" }
 miden-objects = "0.12.3"
+log = "0.4.28"
 
 [dependencies.miden-bridge]
 git = "ssh://git@github.com/arcane-finance-defi/miden-bridge-mono.git"

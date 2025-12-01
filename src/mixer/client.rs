@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
-
+use anyhow::Error;
+use futures::StreamExt;
 use glob::glob;
 use miden_client::{
     Client as MidenClient, ClientError as MidenClientError, ExecutionOptions,
@@ -12,13 +13,14 @@ use miden_client::{
     transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
 };
+use miden_client::rpc::GrpcError;
 use miden_client_sqlite_store::SqliteStore;
 use miden_objects::{AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word};
+use miden_objects::note::Nullifier;
 use rand::{Rng, rng};
 use thiserror::Error;
 use tokio::fs::read;
-use tracing::info;
-
+use tracing::{info, trace, warn};
 use super::bridge::{PublicNoteConstructorError, croschain, get_public_bridge_output_note};
 use crate::MAX_NOTES_IN_BATCH_TRANSACTION;
 
@@ -29,6 +31,18 @@ const DEFAULT_STORAGE_FILE: &str = "store.db";
 pub struct MixerClient {
     client: MidenClient<BasicAuthenticator>,
     rpc: Arc<dyn NodeRpcClient>,
+}
+
+#[derive(PartialEq)]
+enum NoteAvailabilityStatus {
+    Onchain,
+    NotFound,
+    Consumed
+}
+
+struct NoteCheckResult {
+    note: Note,
+    status: NoteAvailabilityStatus,
 }
 
 #[derive(Error, Debug)]
@@ -216,6 +230,24 @@ impl MixerClient {
         Ok(self.rpc.get_note_by_id(note_id).await.is_ok())
     }
 
+    async fn check_note_status(
+        &self,
+        note_id: NoteId,
+        nullifier: Nullifier
+    ) -> anyhow::Result<NoteAvailabilityStatus> {
+        if self.rpc.get_note_by_id(note_id).await.is_ok() {
+            let nullifier_onchain_check_result = self.rpc.check_nullifiers(&[nullifier]).await;
+            match nullifier_onchain_check_result {
+                Err(RpcError::GrpcError { error_kind: GrpcError::NotFound, .. }) =>
+                    Ok(NoteAvailabilityStatus::Onchain),
+                Ok(_) => Ok(NoteAvailabilityStatus::Consumed),
+                _ => Err(Error::msg("Unexpected error during the note nullifier check")),
+            }
+        } else {
+            Ok(NoteAvailabilityStatus::NotFound)
+        }
+    }
+
     // TODO: result type should not neglect about individual note failures, so we can identify
     // errorneous notes and ignore them
     #[tracing::instrument(skip_all)]
@@ -223,9 +255,48 @@ impl MixerClient {
         &mut self,
         notes: Vec<Note>,
         account_id: AccountId,
-    ) -> Result<TransactionId, MixerClientError> {
+    ) -> Result<Option<TransactionId>, MixerClientError> {
         if notes.len() > MAX_NOTES_IN_BATCH_TRANSACTION {
             return Err(MixerClientError::TransactionNotesLimit());
+        }
+
+        let checked_notes: Vec<NoteCheckResult> = tokio_stream::iter(notes).filter_map(|note| async {
+            let status = self.check_note_status(
+                note.id(),
+                note.nullifier()
+            ).await;
+
+            return match status {
+                Ok(NoteAvailabilityStatus::NotFound) => {
+                    trace!("Note with id {} not found onchain", note.id().to_hex());
+                    None
+                },
+                Ok(NoteAvailabilityStatus::Onchain) =>
+                    Some(NoteCheckResult {
+                        note,
+                        status: NoteAvailabilityStatus::Onchain,
+                    }),
+                Ok(NoteAvailabilityStatus::Consumed) => {
+                    trace!("Note with id {} already consumed", note.id().to_hex());
+                    Some(NoteCheckResult {
+                        note,
+                        status: NoteAvailabilityStatus::Consumed,
+                    })
+                },
+                Err(e) => {
+                    warn!("Check of note with id {} failed: {}", note.id().to_hex(), e);
+                    None
+                },
+            }
+        }).collect().await;
+
+        let notes: Vec<Note> = checked_notes.into_iter()
+            .filter(|n| n.status == NoteAvailabilityStatus::Onchain)
+            .map(|n| n.note)
+            .collect();
+
+        if notes.len() == 0 {
+            return Ok(None);
         }
 
         self.check_crosschain_notes(&notes).await?;
@@ -258,7 +329,7 @@ impl MixerClient {
 
         self.cleanup().await?;
 
-        Ok(tx_id)
+        Ok(Some(tx_id))
     }
 
     async fn check_crosschain_notes(&mut self, notes: &Vec<Note>) -> Result<(), MixerClientError> {

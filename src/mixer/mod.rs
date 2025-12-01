@@ -35,7 +35,7 @@ pub enum MixClientRequest {
     MixBatch {
         notes: Vec<Note>,
         account_id: AccountId,
-        response_sink: MixerClientResponse<TransactionId>,
+        response_sink: MixerClientResponse<Option<TransactionId>>,
     },
     Poll {
         note_id: NoteId,

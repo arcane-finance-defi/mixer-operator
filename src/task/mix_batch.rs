@@ -123,18 +123,22 @@ async fn mix_batch_inner(
     // TODO: try to adopt use of &str in `mix_batch` trait method
     let note_ids: Vec<_> = notes_batch.iter().map(|note| note.note_id.to_string()).collect();
 
-    let tx_id = match db
+    match db
         .mix_batch(note_ids, account_id.to_string(), client)
         .await
         .with_context(|| "async mix_batch worker is executing batch")
     {
-        Ok(tx_id) => tx_id,
+        Ok(Some(tx_id)) => {
+            tracing::info!("Completed mix for account_id={account_id} with tx_id={tx_id}");
+        },
+        Ok(None) => {
+            tracing::info!("No note found for batch mix");
+        }
         Err(error) => {
             tracing::error!("Error when trying to mix batch to {account_id} with {error:#?}");
             anyhow::bail!("mix_batch {error}");
         },
     };
-    tracing::info!("Completed mix for account_id={account_id} with tx_id={tx_id}");
     Ok(())
 }
 

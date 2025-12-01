@@ -127,7 +127,7 @@ pub trait NoteRepository: Send + Sync {
         note_ids: Vec<String>,
         account_id: String,
         client: &crate::mixer::MixerClientSender,
-    ) -> Result<String, NoteRepositoryError>;
+    ) -> Result<Option<String>, NoteRepositoryError>;
 }
 
 #[async_trait::async_trait]
@@ -407,7 +407,7 @@ impl NoteRepository for DatabaseStorage {
         note_ids: Vec<String>,
         account_id: String,
         client: &crate::mixer::MixerClientSender,
-    ) -> Result<String, NoteRepositoryError> {
+    ) -> Result<Option<String>, NoteRepositoryError> {
         use miden_objects::{note::Note, transaction::TransactionId};
 
         use crate::{
@@ -465,7 +465,7 @@ impl NoteRepository for DatabaseStorage {
                         .collect::<Result<Vec<_>, _>>()?;
 
                     // send batch request
-                    let (request, response) = tokio::sync::oneshot::channel::<Result<TransactionId, MixerClientError>>();
+                    let (request, response) = tokio::sync::oneshot::channel::<Result<Option<TransactionId>, MixerClientError>>();
                     client
                         .blocking_send(MixClientRequest::MixBatch {
                             notes: miden_notes,
@@ -475,7 +475,7 @@ impl NoteRepository for DatabaseStorage {
                         .map_err(|e| NoteRepositoryError::Internal(anyhow!("client send error {e}")))?;
 
                     // await for result of mixing (transaction id)
-                    let tx_id = response.blocking_recv()
+                    let tx_id: Option<TransactionId> = response.blocking_recv()
                         .with_context(|| format!("response mix batch error for {account_id}"))?
                         .with_context(|| format!("internal mix batch error for {account_id}"))?;
 
@@ -496,7 +496,7 @@ impl NoteRepository for DatabaseStorage {
                             }
                     }
 
-                    Ok(tx_id.to_string()) // TODO: how does this error coercion works? 0_o
+                    Ok(tx_id.map(|id| id.to_string())) // TODO: how does this error coercion works? 0_o
                 })
                 // END TRANSACTION
             })
