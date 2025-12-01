@@ -29,6 +29,7 @@ pub fn routes(mode: RouterMode) -> Vec<rocket::Route> {
             mix::delayed_post_batch_handler,
             mix::delayed_status_get_handler,
             note_drafts::post_new_handler,
+            note_drafts::post_new_batch_handler,
             note_drafts::get_status_handler,
         ]
     )

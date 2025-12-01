@@ -127,6 +127,9 @@ impl From<crate::db::models::NoteRepositoryError> for EndpointError {
             NoteRepositoryError::MoreThanOneRowAffected => {
                 EndpointError::InternalStorage(derr.to_string())
             },
+            NoteRepositoryError::LessThanExpectedRowsAffected { expected: _, affected: _ } => {
+                EndpointError::InternalStorage(derr.to_string())
+            },
             NoteRepositoryError::Internal(e) => EndpointError::InternalStorage(e.to_string()),
             NoteRepositoryError::InteractDeadpool(s) => EndpointError::InternalStorage(s),
         }

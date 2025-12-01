@@ -13,6 +13,8 @@ pub mod notes;
 pub enum NoteRepositoryError {
     #[error("More than one rows affected")]
     MoreThanOneRowAffected,
+    #[error("Less than expected rows affected. Expected: {expected:?}, Actual: {affected:?}")]
+    LessThanExpectedRowsAffected { expected: usize, affected: usize },
     #[error("Note not found")]
     NotFound(String),
     #[error("Pool interact error")]
@@ -79,6 +81,8 @@ impl From<deadpool_diesel::PoolError> for NoteRepositoryError {
 pub trait NoteRepository: Send + Sync {
     async fn add_note(&self, note: notes::FullNote) -> Result<(), NoteRepositoryError>;
 
+    async fn add_notes(&self, notes: Vec<FullNote>) -> Result<(), NoteRepositoryError>;
+
     async fn get_note_by_id(&self, note_id: &str) -> Result<FullNote, NoteRepositoryError>;
 
     async fn get_note_by_request_id(&self, req_id: &str) -> Result<FullNote, NoteRepositoryError>;
@@ -141,6 +145,27 @@ impl NoteRepository for DatabaseStorage {
 
         if result != 1 {
             return Err(NoteRepositoryError::MoreThanOneRowAffected);
+        }
+        Ok(())
+    }
+
+    async fn add_notes(&self, notes: Vec<FullNote>) -> Result<(), NoteRepositoryError> {
+        let conn = self.pool.get().await.map_err(NoteRepositoryError::from)?;
+        let notes_count = notes.len();
+
+        let result = conn
+            .interact(move |conn| {
+                diesel::insert_into(schema::notes::table).values(&notes).execute(conn)
+            })
+            .await
+            .map_err(NoteRepositoryError::from)?
+            .map_err(NoteRepositoryError::from)?;
+
+        if result != notes_count {
+            return Err(NoteRepositoryError::LessThanExpectedRowsAffected {
+                expected: notes_count,
+                affected: result,
+            });
         }
         Ok(())
     }
