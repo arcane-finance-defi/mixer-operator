@@ -133,7 +133,7 @@ async fn mix_batch_inner(
         },
         Ok(None) => {
             tracing::info!("No note found for batch mix");
-        }
+        },
         Err(error) => {
             tracing::error!("Error when trying to mix batch to {account_id} with {error:#?}");
             anyhow::bail!("mix_batch {error}");

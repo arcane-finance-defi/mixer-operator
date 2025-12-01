@@ -1,4 +1,5 @@
 use std::{path::PathBuf, sync::Arc};
+
 use anyhow::Error;
 use futures::StreamExt;
 use glob::glob;
@@ -8,19 +9,20 @@ use miden_client::{
     auth::BasicAuthenticator,
     crypto::RpoRandomCoin,
     note::{Note, NoteFile, NoteId},
-    rpc::{Endpoint, GrpcClient, NodeRpcClient, RpcError},
+    rpc::{Endpoint, GrpcClient, GrpcError, NodeRpcClient, RpcError},
     store::Store,
     transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
 };
-use miden_client::rpc::GrpcError;
 use miden_client_sqlite_store::SqliteStore;
-use miden_objects::{AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word};
-use miden_objects::note::Nullifier;
+use miden_objects::{
+    AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word, note::Nullifier,
+};
 use rand::{Rng, rng};
 use thiserror::Error;
 use tokio::fs::read;
 use tracing::{info, trace, warn};
+
 use super::bridge::{PublicNoteConstructorError, croschain, get_public_bridge_output_note};
 use crate::MAX_NOTES_IN_BATCH_TRANSACTION;
 
@@ -37,7 +39,7 @@ pub struct MixerClient {
 enum NoteAvailabilityStatus {
     Onchain,
     NotFound,
-    Consumed
+    Consumed,
 }
 
 struct NoteCheckResult {
@@ -233,13 +235,14 @@ impl MixerClient {
     async fn check_note_status(
         &self,
         note_id: NoteId,
-        nullifier: Nullifier
+        nullifier: Nullifier,
     ) -> anyhow::Result<NoteAvailabilityStatus> {
         if self.rpc.get_note_by_id(note_id).await.is_ok() {
             let nullifier_onchain_check_result = self.rpc.check_nullifiers(&[nullifier]).await;
             match nullifier_onchain_check_result {
-                Err(RpcError::GrpcError { error_kind: GrpcError::NotFound, .. }) =>
-                    Ok(NoteAvailabilityStatus::Onchain),
+                Err(RpcError::GrpcError { error_kind: GrpcError::NotFound, .. }) => {
+                    Ok(NoteAvailabilityStatus::Onchain)
+                },
                 Ok(_) => Ok(NoteAvailabilityStatus::Consumed),
                 _ => Err(Error::msg("Unexpected error during the note nullifier check")),
             }
@@ -260,42 +263,43 @@ impl MixerClient {
             return Err(MixerClientError::TransactionNotesLimit());
         }
 
-        let checked_notes: Vec<NoteCheckResult> = tokio_stream::iter(notes).filter_map(|note| async {
-            let status = self.check_note_status(
-                note.id(),
-                note.nullifier()
-            ).await;
+        let checked_notes: Vec<NoteCheckResult> = tokio_stream::iter(notes)
+            .filter_map(|note| async {
+                let status = self.check_note_status(note.id(), note.nullifier()).await;
 
-            return match status {
-                Ok(NoteAvailabilityStatus::NotFound) => {
-                    trace!("Note with id {} not found onchain", note.id().to_hex());
-                    None
-                },
-                Ok(NoteAvailabilityStatus::Onchain) =>
-                    Some(NoteCheckResult {
+                let check_result: Option<NoteCheckResult> = match status {
+                    Ok(NoteAvailabilityStatus::NotFound) => {
+                        trace!("Note with id {} not found onchain", note.id().to_hex());
+                        None
+                    },
+                    Ok(NoteAvailabilityStatus::Onchain) => Some(NoteCheckResult {
                         note,
                         status: NoteAvailabilityStatus::Onchain,
                     }),
-                Ok(NoteAvailabilityStatus::Consumed) => {
-                    trace!("Note with id {} already consumed", note.id().to_hex());
-                    Some(NoteCheckResult {
-                        note,
-                        status: NoteAvailabilityStatus::Consumed,
-                    })
-                },
-                Err(e) => {
-                    warn!("Check of note with id {} failed: {}", note.id().to_hex(), e);
-                    None
-                },
-            }
-        }).collect().await;
+                    Ok(NoteAvailabilityStatus::Consumed) => {
+                        trace!("Note with id {} already consumed", note.id().to_hex());
+                        Some(NoteCheckResult {
+                            note,
+                            status: NoteAvailabilityStatus::Consumed,
+                        })
+                    },
+                    Err(e) => {
+                        warn!("Check of note with id {} failed: {}", note.id().to_hex(), e);
+                        None
+                    },
+                };
+                check_result
+            })
+            .collect()
+            .await;
 
-        let notes: Vec<Note> = checked_notes.into_iter()
+        let notes: Vec<Note> = checked_notes
+            .into_iter()
             .filter(|n| n.status == NoteAvailabilityStatus::Onchain)
             .map(|n| n.note)
             .collect();
 
-        if notes.len() == 0 {
+        if notes.is_empty() {
             return Ok(None);
         }
 
