@@ -9,7 +9,7 @@ use miden_client::{
     auth::BasicAuthenticator,
     crypto::RpoRandomCoin,
     note::{Note, NoteFile, NoteId},
-    rpc::{Endpoint, GrpcClient, GrpcError, NodeRpcClient, RpcError},
+    rpc::{Endpoint, GrpcClient, NodeRpcClient, RpcError},
     store::Store,
     transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
@@ -21,7 +21,7 @@ use miden_objects::{
 use rand::{Rng, rng};
 use thiserror::Error;
 use tokio::fs::read;
-use tracing::{info, trace, warn};
+use tracing::{debug, info, warn};
 
 use super::bridge::{PublicNoteConstructorError, croschain, get_public_bridge_output_note};
 use crate::MAX_NOTES_IN_BATCH_TRANSACTION;
@@ -130,7 +130,7 @@ impl MixerClient {
             rpc.clone(),
             Box::new(rng),
             store.clone() as Arc<dyn Store>,
-            Some(Arc::new(BasicAuthenticator::new(&[]))),
+            None,
             ExecutionOptions::new(
                 Some(MAX_TX_EXECUTION_CYCLES),
                 MIN_TX_EXECUTION_CYCLES,
@@ -255,12 +255,16 @@ impl MixerClient {
         nullifier: Nullifier,
     ) -> anyhow::Result<NoteAvailabilityStatus> {
         if self.rpc.get_note_by_id(note_id).await.is_ok() {
-            let nullifier_onchain_check_result = self.rpc.check_nullifiers(&[nullifier]).await;
+            let nullifier_onchain_check_result =
+                self.rpc.check_nullifiers(&[nullifier]).await?.pop();
             match nullifier_onchain_check_result {
-                Err(RpcError::GrpcError { error_kind: GrpcError::NotFound, .. }) => {
-                    Ok(NoteAvailabilityStatus::Onchain)
+                Some(proof) => {
+                    if proof.leaf().is_empty() {
+                        Ok(NoteAvailabilityStatus::Onchain)
+                    } else {
+                        Ok(NoteAvailabilityStatus::Consumed)
+                    }
                 },
-                Ok(_) => Ok(NoteAvailabilityStatus::Consumed),
                 _ => Err(Error::msg("Unexpected error during the note nullifier check")),
             }
         } else {
@@ -286,7 +290,7 @@ impl MixerClient {
 
                 let check_result: Option<NoteCheckResult> = match status {
                     Ok(NoteAvailabilityStatus::NotFound) => {
-                        trace!("Note with id {} not found onchain", note.id().to_hex());
+                        debug!("Note with id {} not found onchain", note.id().to_hex());
                         Some(NoteCheckResult {
                             note,
                             status: NoteAvailabilityStatus::NotFound,
@@ -297,7 +301,7 @@ impl MixerClient {
                         status: NoteAvailabilityStatus::Onchain,
                     }),
                     Ok(NoteAvailabilityStatus::Consumed) => {
-                        trace!("Note with id {} already consumed", note.id().to_hex());
+                        debug!("Note with id {} already consumed", note.id().to_hex());
                         Some(NoteCheckResult {
                             note,
                             status: NoteAvailabilityStatus::Consumed,
