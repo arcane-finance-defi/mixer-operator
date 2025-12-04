@@ -9,12 +9,11 @@ use miden_client::{
     auth::BasicAuthenticator,
     crypto::RpoRandomCoin,
     note::{Note, NoteFile, NoteId},
-    rpc::{Endpoint, GrpcClient, NodeRpcClient, RpcError},
+    rpc::{Endpoint, GrpcClient, NodeRpcClient, RpcError, domain::note::FetchedNote},
     store::Store,
     transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
 };
-use miden_client::rpc::domain::note::FetchedNote;
 use miden_client_sqlite_store::SqliteStore;
 use miden_objects::{
     AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word, note::Nullifier,
@@ -300,19 +299,17 @@ impl MixerClient {
                     Ok(NoteAvailabilityStatus::Onchain) => {
                         let fetched_note = self.rpc.get_note_by_id(note.id()).await;
                         let fetched_note = match fetched_note {
-                            Ok(FetchedNote::Private(_, metadata, _)) => {
-                                Ok(Note::new(
-                                    note.assets().clone(),
-                                    metadata,
-                                    note.recipient().clone()
-                                ))
-                            }
+                            Ok(FetchedNote::Private(_, metadata, _)) => Ok(Note::new(
+                                note.assets().clone(),
+                                metadata,
+                                note.recipient().clone(),
+                            )),
                             Err(e) => Err(anyhow::Error::new(e)),
                             _ => Err(Error::msg("Unexpected public note")),
                         };
-                        if fetched_note.is_ok() {
+                        if let Ok(note) = fetched_note {
                             Some(NoteCheckResult {
-                                note: fetched_note.unwrap(),
+                                note,
                                 status: NoteAvailabilityStatus::Onchain,
                             })
                         } else {
