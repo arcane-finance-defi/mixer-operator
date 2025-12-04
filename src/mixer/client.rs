@@ -14,6 +14,7 @@ use miden_client::{
     transaction::{NoteArgs, TransactionId, TransactionRequestBuilder, TransactionRequestError},
     utils::{Deserializable, DeserializationError},
 };
+use miden_client::rpc::domain::note::FetchedNote;
 use miden_client_sqlite_store::SqliteStore;
 use miden_objects::{
     AccountIdError, Felt, MAX_TX_EXECUTION_CYCLES, MIN_TX_EXECUTION_CYCLES, Word, note::Nullifier,
@@ -296,10 +297,31 @@ impl MixerClient {
                             status: NoteAvailabilityStatus::NotFound,
                         })
                     },
-                    Ok(NoteAvailabilityStatus::Onchain) => Some(NoteCheckResult {
-                        note,
-                        status: NoteAvailabilityStatus::Onchain,
-                    }),
+                    Ok(NoteAvailabilityStatus::Onchain) => {
+                        let fetched_note = self.rpc.get_note_by_id(note.id()).await;
+                        let fetched_note = match fetched_note {
+                            Ok(FetchedNote::Private(_, metadata, _)) => {
+                                Ok(Note::new(
+                                    note.assets().clone(),
+                                    metadata,
+                                    note.recipient().clone()
+                                ))
+                            }
+                            Err(e) => Err(anyhow::Error::new(e)),
+                            _ => Err(Error::msg("Unexpected public note")),
+                        };
+                        if fetched_note.is_ok() {
+                            Some(NoteCheckResult {
+                                note: fetched_note.unwrap(),
+                                status: NoteAvailabilityStatus::Onchain,
+                            })
+                        } else {
+                            Some(NoteCheckResult {
+                                note,
+                                status: NoteAvailabilityStatus::NotFound,
+                            })
+                        }
+                    },
                     Ok(NoteAvailabilityStatus::Consumed) => {
                         debug!("Note with id {} already consumed", note.id().to_hex());
                         Some(NoteCheckResult {
