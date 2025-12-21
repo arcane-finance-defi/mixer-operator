@@ -47,6 +47,12 @@ Or with docker - see [docker deploy docs](/deploy/README.md)
 4. Copy the binaries to the server `scp ./target/x86_64-unknown-linux-gnu/release/mixer-operator root@156.67.63.214:/root/mixer/mixer-operator`
 5. Start the service `cd ./mixer && nohup ./mixer-operator &`
 
+## How to deploy docker images to stage
+* Docker images are build automatically using CI/CD and tagged with short-sha commit tag
+* Create git tag with pattern `stage-*` on commit you wish to deploy to stage
+* This will launch another CI/CD pipeline which will create another docker image with tag `stage`
+* Once `stage` image will be pushed to registery, watchtower container will update stage container automatically 
+
 ## How to test
 
 * To run unit-tests only run `cargo test --lib`
