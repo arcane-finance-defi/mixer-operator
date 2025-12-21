@@ -33,10 +33,10 @@ jobs:
         run: echo "head_sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Pull Docker image from registery
-        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.gitvars.outputs.head_sha_short }}
+        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.gitvars.outputs.head_sha_short }}
 
       - name: Tag image for the stage
-        run: docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.gitvars.outputs.head_sha_short }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stage
+        run: docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.gitvars.outputs.head_sha_short }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stage
 
       - name: Push Docker image back to registery
         run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stage
