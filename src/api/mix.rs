@@ -4,7 +4,10 @@ use anyhow::{Context as _, anyhow};
 use chrono::{DateTime, TimeDelta, Utc};
 use fang::{AsyncQueue, AsyncQueueable};
 use miden_bridge::{
-    notes::{BRIDGE_USECASE, crosschain::new_crosschain_note},
+    notes::{
+        BRIDGE_USECASE,
+        crosschain::{CrosshainNoteParams, new_crosschain_note},
+    },
     utils::evm_address_to_felts,
 };
 use miden_client::{Felt, Word};
@@ -86,6 +89,7 @@ pub async fn post_batch_handler(
             mix_reqs.push(MixRequest {
                 dest_chain_id: req.dest_chain_id,
                 dest_address: req.dest_address,
+                decoded_dest_address: None,
                 serial_num_hex: req.serial_num_hex,
                 bridge_serial_num_hex: req.bridge_serial_num_hex,
                 amount: req.amount,
@@ -279,6 +283,7 @@ fn schedule_after(delay_ms: u64) -> anyhow::Result<DateTime<Utc>> {
 pub struct MixRequest {
     dest_chain_id: u64,
     dest_address: String,
+    decoded_dest_address: Option<[u64; 4]>,
     serial_num_hex: String,
     bridge_serial_num_hex: String,
     amount: u64,
@@ -292,6 +297,7 @@ pub struct MixRequest {
 pub struct MixMetadata {
     dest_chain_id: u64,
     dest_address: String,
+    decoded_dest_address: Option<[u64; 4]>,
     serial_num_hex: String,
     bridge_serial_num_hex: String,
     account_id: String,
@@ -339,11 +345,21 @@ impl TryFrom<&MixRequest> for Note {
         let account_id = value.account_id.clone();
         let sender_id = value.sender_id.clone();
 
+        let dest_address = match value {
+            MixRequest {
+                decoded_dest_address: Some(decoded_dest_address),
+                ..
+            } => DestinationAddress::Decoded(*decoded_dest_address),
+            MixRequest { dest_address, .. } => {
+                DestinationAddress::Encoded(dest_address.to_string())
+            },
+        };
+
         let value = NoteFrom {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
-            dest_address: &value.dest_address,
+            dest_address,
             faucet_id: &account_id,
             sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
@@ -362,7 +378,7 @@ impl TryFrom<&MixDelayedRequest> for Note {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
-            dest_address: &value.dest_address,
+            dest_address: DestinationAddress::Encoded(value.dest_address.to_string()),
             faucet_id: &account_id,
             sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
@@ -377,11 +393,21 @@ impl TryFrom<&MixMetadata> for Note {
         let account_id = value.account_id.clone();
         let sender_id = value.sender_id.clone();
 
+        let dest_address = match value {
+            MixMetadata {
+                decoded_dest_address: Some(decoded_dest_address),
+                ..
+            } => DestinationAddress::Decoded(*decoded_dest_address),
+            MixMetadata { dest_address, .. } => {
+                DestinationAddress::Encoded(dest_address.to_string())
+            },
+        };
+
         let value = NoteFrom {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
-            dest_address: &value.dest_address,
+            dest_address,
             faucet_id: &account_id,
             sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
@@ -390,11 +416,16 @@ impl TryFrom<&MixMetadata> for Note {
     }
 }
 
+pub enum DestinationAddress {
+    Encoded(String),
+    Decoded([u64; 4]),
+}
+
 pub(super) struct NoteFrom<'a> {
     pub serial_num_hex: &'a str,
     pub bridge_serial_num_hex: &'a str,
     pub dest_chain_id: u64,
-    pub dest_address: &'a str,
+    pub dest_address: DestinationAddress,
     pub faucet_id: &'a str,
     pub sender_id: &'a str,
     pub amount: u64,
@@ -405,17 +436,20 @@ pub(super) fn note_try_from(value: &NoteFrom) -> anyhow::Result<Note> {
     let sender_id = AccountId::from_hex(value.sender_id)?;
 
     // NB: https://github.com/0xMiden/crypto/pull/450 parse_hex_string_as_word -> Word::parse
-    let note = new_crosschain_note(
-        Word::try_from(value.serial_num_hex)?,
-        Word::try_from(value.bridge_serial_num_hex)?,
-        Felt::new(value.dest_chain_id),
-        evm_address_to_felts(value.dest_address)?,
-        None,
+    let note = new_crosschain_note(CrosshainNoteParams {
+        serial_number: Word::try_from(value.serial_num_hex)?,
+        output_serial_number: Word::try_from(value.bridge_serial_num_hex)?,
+        dest_chain: Felt::new(value.dest_chain_id),
+        dest_addr: match &value.dest_address {
+            DestinationAddress::Decoded(address) => address.map(Felt::new),
+            DestinationAddress::Encoded(address_hex) => evm_address_to_felts(address_hex)?,
+        },
+        sender: sender_id,
+        asset_amount: value.amount,
         faucet_id,
-        value.amount,
-        sender_id,
-        NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
-    )?;
+        note_tag: NoteTag::for_local_use_case(BRIDGE_USECASE, 0)?,
+        unblock_timestamp: None,
+    })?;
 
     Ok(note)
 }

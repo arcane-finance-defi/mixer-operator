@@ -8,7 +8,7 @@ port = 8001
 rpc_url = "https://rpc.testnet.miden.io"
 rpc_timeout_ms = 10000
 internal_queue_size = 100
-public_account_ids = "0x3f3dfd62ebe11720011106830bb4e0"
+public_account_ids = "0xf7e2db943a6739205bb6f454cf9445"
 event_loop_timeout_ms = 1000
 
 [default.db]

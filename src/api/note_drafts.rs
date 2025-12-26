@@ -16,7 +16,10 @@ use super::{
     error::EndpointError,
     mix::{NoteFrom, fill_note_record, note_try_from},
 };
-use crate::db::models::{NoteRepository, notes::FullNote};
+use crate::{
+    api::mix::DestinationAddress,
+    db::models::{NoteRepository, notes::FullNote},
+};
 
 const DEFAULT_TRY_AFTER_SECONDS: u32 = 15;
 
@@ -167,7 +170,7 @@ impl TryFrom<&MixDraftRequest> for miden_objects::note::Note {
             serial_num_hex: &value.serial_num_hex,
             bridge_serial_num_hex: &value.bridge_serial_num_hex,
             dest_chain_id: value.dest_chain_id,
-            dest_address: &value.dest_address,
+            dest_address: DestinationAddress::Encoded(value.dest_address.to_string()),
             faucet_id: &account_id,
             sender_id: &sender_id.unwrap_or(account_id.clone()),
             amount: value.amount,
