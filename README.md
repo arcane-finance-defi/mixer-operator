@@ -39,20 +39,6 @@ cargo run --release
 
 Or with docker - see [docker deploy docs](/deploy/README.md)
 
-## How to deploy binary package
-
-1. Build the service with target `x86_64-unknown-linux-gnu`
-2. Connect to the server via SSH `ssh root@156.67.63.214`
-3. Stop the previous version `killall mixer-operator`
-4. Copy the binaries to the server `scp ./target/x86_64-unknown-linux-gnu/release/mixer-operator root@156.67.63.214:/root/mixer/mixer-operator`
-5. Start the service `cd ./mixer && nohup ./mixer-operator &`
-
-## How to deploy docker images to stage
-* Docker images are build automatically using CI/CD and tagged with short-sha commit tag
-* Create git tag with pattern `stage-*` on commit you wish to deploy to stage
-* This will launch another CI/CD pipeline which will create another docker image with tag `stage`
-* Once `stage` image will be pushed to registery, watchtower container will update stage container automatically 
-
 ## How to test
 
 * To run unit-tests only run `cargo test --lib`
@@ -66,3 +52,22 @@ Or with docker - see [docker deploy docs](/deploy/README.md)
 1. Cleanup previous cli configs `rm -r miden-client.toml store.sqlite3 templates keystore`
 2. Fill _.env_ file. `cp .env.example .env` and fill the _TEST_PRIVATE_KEY_ env var with EVM private key of the source test account, _TEST_RECEIVER_ADDRESS_ with public EVM address of target account, _TEST_USDC_AMOUNT_ to specify custom amount of USDC tokens to be mixed. __DO NOT USE THE ACCOUNT THAT HOLDS ANY REAL ASSETS. THE PRIVATE KEY WILL BE INCLUDED INTO THE TEST LOGS__
 3. Run test with `cargo test --package mixer-operator --test mixing_flow test_usdc_mixing_flow -- --exact` (may take some time)
+
+## How to Deploy
+
+### How to deploy docker images to stage
+
+##### Using [hoister](deploy/docker-compose.stage.hoister.yml)
+
+* Docker images are build automatically using CI/CD and tagged with short-sha commit tag
+* Create git tag with pattern `stage-*` on commit you want to deploy to stage
+* This will launch another CI/CD pipeline which will create docker image with tag `stage`
+* Once `stage` image will be pushed to docker registry, `hoister` will update and restart target app container automatically
+
+### How to deploy binary package
+
+1. Build the service with target `x86_64-unknown-linux-gnu`
+2. Connect to the server via SSH `ssh root@156.67.63.214`
+3. Stop the previous version `killall mixer-operator`
+4. Copy the binaries to the server `scp ./target/x86_64-unknown-linux-gnu/release/mixer-operator root@156.67.63.214:/root/mixer/mixer-operator`
+5. Start the service `cd ./mixer && nohup ./mixer-operator &`

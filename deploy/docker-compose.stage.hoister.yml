@@ -1,0 +1,42 @@
+services:
+  local-mixer-operator:
+    # Important: must be a real registry image reference (GHCR + stage tag)
+    image: ghcr.io/arcane-finance-defi/mixer-operator:stage
+    container_name: ${MO_APP_CONTAINER_NAME}
+    labels:
+      - "hoister.enable=true"
+    environment:
+      RUST_BACKTRACE: 1
+      RUST_LOG: "sqlx=warn,mixer_operator=info,h2::codec=info,debug"
+      ROCKET_ENV: development
+      ROCKET_TQ: "{enabled=${POSTGRES_ENABLED},db_url=\"postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@local-postgres-db/${POSTGRES_DB}\"}"
+      ROCKET_ADDRESS: "0.0.0.0"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - local-postgres-db
+
+  local-postgres-db:
+    image: postgres:9.6-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/mixer-operator/postgres/data
+
+  hoister:
+    image: emrius11/hoister:latest
+    container_name: hoister
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - local-mixer-operator
+
+volumes:
+  postgres_data:
