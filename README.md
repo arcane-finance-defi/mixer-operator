@@ -59,10 +59,13 @@ Or with docker - see [docker deploy docs](/deploy/README.md)
 
 ##### Using [hoister](deploy/docker-compose.stage.hoister.yml)
 
-* Docker images are build automatically using CI/CD and tagged with short-sha commit tag
-* Create git tag with pattern `stage-*` on commit you want to deploy to stage
-* This will launch another CI/CD pipeline which will create docker image with tag `stage`
-* Once `stage` image will be pushed to docker registry, `hoister` will update and restart target app container automatically
+* Docker images are build automatically using CI/CD and tagged with short-sha commit tag.
+* Create git tag with pattern `stage-*` on commit you want to deploy to stage.
+* This will launch another CI/CD pipeline which will create docker image with tag `stage`.
+* Once `stage` image will be pushed to docker registry, `hoister` will update and restart target app container automatically.
+
+##### How to revert
+* Launch pipeline with desired (e.g. previous) stage tag manually from Github Actions. Latest launched pipeline become `stage` because of image tag update.
 
 ### How to deploy binary package
 
