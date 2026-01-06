@@ -7,7 +7,7 @@ pub mod config;
 pub mod db;
 pub mod logging;
 pub mod mixer;
-pub mod named_future;
+pub mod spawn_task;
 pub mod state;
 pub mod task;
 
