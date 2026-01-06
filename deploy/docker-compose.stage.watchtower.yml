@@ -1,0 +1,43 @@
+services:
+  local-mixer-operator:
+    image: ghcr.io/arcane-finance-defi/mixer-operator:stage
+    container_name: ${MO_APP_CONTAINER_NAME}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      ssh:
+        - default
+    environment:
+      RUST_BACKTRACE: 1
+      RUST_LOG: "sqlx=warn,mixer_operator=info,h2::codec=info,debug"
+      ROCKET_ENV: development
+      ROCKET_TQ: "{enabled=${POSTGRES_ENABLED},db_url=\"postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@local-postgres-db/${POSTGRES_DB}\"}"
+      ROCKET_ADDRESS: "0.0.0.0"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - local-postgres-db
+
+  local-postgres-db:
+    image: postgres:9.6-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/mixer-operator/postgres/data
+
+  watchtower:
+    image: nickfedor/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Watch only the application container, and update it when :stage changes
+    command: ${MO_APP_CONTAINER_NAME} --interval 30 
+    # --cleanup ${MO_APP_CONTAINER_NAME}
+
+volumes:
+  postgres_data:

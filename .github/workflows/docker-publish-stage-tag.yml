@@ -1,0 +1,43 @@
+name: Docker Stage Tag
+
+on:
+  push:
+    tags:
+      - 'stage-*' # Glob pattern for tags like stage-v1.0.0, etc.
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  pull_tag_and_push:
+  
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute short SHA
+        id: gitvars
+        run: echo "head_sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Pull Docker image from registery
+        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.gitvars.outputs.head_sha_short }}
+
+      - name: Tag image for the stage
+        run: docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.gitvars.outputs.head_sha_short }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stage
+
+      - name: Push Docker image back to registery
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stage
+
