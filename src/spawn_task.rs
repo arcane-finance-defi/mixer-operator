@@ -4,7 +4,10 @@ use tracing::Instrument;
 
 pub type TaskHandle = BoxFuture<'static, (String, anyhow::Result<()>)>;
 
-fn into_task_handle(name: String, join_handle: tokio::task::JoinHandle<anyhow::Result<()>>) -> TaskHandle {
+fn into_task_handle(
+    name: String,
+    join_handle: tokio::task::JoinHandle<anyhow::Result<()>>,
+) -> TaskHandle {
     async move {
         let result = match join_handle.await {
             Ok(result) => result,
