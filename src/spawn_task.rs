@@ -10,14 +10,14 @@ fn into_task_handle(name: String, join_handle: tokio::task::JoinHandle<anyhow::R
             Ok(result) => result,
             Err(error) => Err(if let Ok(panic) = error.try_into_panic() {
                 if let Some(msg) = panic.downcast_ref::<String>() {
-                    anyhow!("task {name} panicked: {msg}")
+                    anyhow!("tokio task {name} panicked: {msg}")
                 } else if let Some(msg) = panic.downcast_ref::<&str>() {
-                    anyhow!("task {name} panicked: {msg}")
+                    anyhow!("tokio task {name} panicked: {msg}")
                 } else {
-                    anyhow!("task {name} panicked")
+                    anyhow!("tokio task {name} panicked")
                 }
             } else {
-                anyhow!("task {name} cancelled")
+                anyhow!("tokio task {name} cancelled")
             }),
         };
         (name, result)
